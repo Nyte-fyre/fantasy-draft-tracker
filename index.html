@@ -71,7 +71,11 @@
   <div class="sub">10-team snake draft &middot; auto-tracks ADP and projected points per team &middot; saves locally in this browser</div>
 
   <div class="clock" id="clock"></div>
-  <div id="saveBar" style="display:flex;gap:10px;align-items:center;margin:-8px 0 8px;font-size:12px;color:var(--sub);flex-wrap:wrap;">
+  <div id="viewerBar" style="display:flex;gap:8px;align-items:center;margin:-8px 0 8px;font-size:12px;color:var(--sub);flex-wrap:wrap;">
+    <span>Viewing as:</span>
+    <select id="viewerSelect"></select>
+  </div>
+  <div id="saveBar" style="display:flex;gap:10px;align-items:center;margin:-4px 0 8px;font-size:12px;color:var(--sub);flex-wrap:wrap;">
     <button id="saveBtn" style="background:var(--gold);color:#1a1a1a;border:none;font-weight:600;">Save progress</button>
     <button id="sleeperBtn" style="background:var(--accent);color:#fff;border:none;font-weight:600;">Sync from Sleeper</button>
     <span id="saveStatus"></span>
@@ -269,9 +273,10 @@ players = players.filter(p=>{
 });
 
 // ---------- Teams ----------
-const TEAM_NAMES = ["Jamie","My Team","Chris M.","Emily G.","Dennis F.","Atherv G.","Tanay G.","Yuval S.","Leron R. / Angie","Ellie G."];
+const TEAM_NAMES = ["Jamie","J.A. Rules","Chris M.","Emily G.","Dennis F.","Atherv G.","Tanay G.","Yuval S.","Leron R. / Angie","Ellie G."];
 const N_TEAMS = TEAM_NAMES.length;
-const MY_TEAM_ID = 2; // pick slot #2 = "My Team"
+const VIEWER_KEY = "ff-2026-viewer-team";
+let MY_TEAM_ID = null; // set per-browser via the "Viewing as" selector, not shared
 let teams = [];
 for(let i=1;i<=N_TEAMS;i++){
   teams.push({id:i, name: TEAM_NAMES[i-1], picks:[]});
@@ -428,7 +433,10 @@ function renderTeams(){
     const totalPts = roster.reduce((s,p)=>s+p.pts,0).toFixed(0);
     return `<div class="teamcard ${t.id===MY_TEAM_ID?'me':''}">
       <div class="teamhead">
-        <input value="${t.name}" data-id="${t.id}" class="nameEdit">
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:600;font-size:14px;">${t.name}${t.id===MY_TEAM_ID?' <span style="color:var(--gold);font-size:11px;">(you)</span>':''}</div>
+          <input value="${t.nickname||''}" placeholder="add a local nickname..." data-id="${t.id}" class="nicknameEdit" style="background:transparent;border:none;border-bottom:1px solid transparent;color:var(--sub);font-size:11px;font-style:italic;padding:2px 0;width:100%;">
+        </div>
         <span class="picks-count" style="font-size:11px;color:var(--sub)">${roster.length} picks</span>
       </div>
       <div class="stats"><span>Avg ADP: <b>${avgAdp}</b></span><span>Proj total: <b>${totalPts} pts</b></span></div>
@@ -438,10 +446,10 @@ function renderTeams(){
     </div>`;
   }).join("");
 
-  el.querySelectorAll('.nameEdit').forEach(inp=>{
+  el.querySelectorAll('.nicknameEdit').forEach(inp=>{
+    inp.onfocus = ()=>{ inp.style.borderBottom = '1px solid var(--gold-dim)'; };
     inp.onchange = ()=>{
-      teams.find(t=>t.id===parseInt(inp.dataset.id)).name = inp.value || ("Team "+inp.dataset.id);
-      renderAll();
+      teams.find(t=>t.id===parseInt(inp.dataset.id)).nickname = inp.value;
       saveState();
     };
   });
@@ -462,6 +470,7 @@ function renderAll(){
   renderBestAvail();
   renderPool();
   renderTeams();
+  renderViewerSelect();
 }
 
 document.getElementById('search').oninput = renderPool;
@@ -478,7 +487,7 @@ function setStatus(msg){
 function saveState(){
   try{
     const state = {
-      teams: teams.map(t=>({id:t.id, name:t.name})),
+      teams: teams.map(t=>({id:t.id, name:t.name, nickname:t.nickname||""})),
       owners: players.filter(p=>p.ownerId!==null).map(p=>({name:p.name, ownerId:p.ownerId})),
       pts: players.map(p=>({name:p.name, pts:p.pts})),
     };
@@ -493,7 +502,7 @@ function loadState(){
     const state = JSON.parse(raw);
     state.teams.forEach(st=>{
       const t = teams.find(tt=>tt.id===st.id);
-      if(t) t.name = st.name;
+      if(t){ t.name = st.name; t.nickname = st.nickname||""; }
     });
     state.pts.forEach(pp=>{
       const p = players.find(pl=>pl.name===pp.name);
@@ -508,7 +517,28 @@ function loadState(){
   }catch(e){ return false; }
 }
 
+// ---------- viewer selection (per-browser, doesn't affect anyone else) ----------
+function renderViewerSelect(){
+  const sel = document.getElementById('viewerSelect');
+  const current = sel.value;
+  sel.innerHTML = `<option value="">Select your team...</option>` +
+    teams.map(t=>`<option value="${t.id}">${t.name}</option>`).join("");
+  if(MY_TEAM_ID) sel.value = String(MY_TEAM_ID);
+}
+function initViewerSelect(){
+  renderViewerSelect();
+  const saved = localStorage.getItem(VIEWER_KEY);
+  if(saved){ MY_TEAM_ID = parseInt(saved); renderViewerSelect(); }
+  document.getElementById('viewerSelect').onchange = (e)=>{
+    MY_TEAM_ID = e.target.value ? parseInt(e.target.value) : null;
+    if(MY_TEAM_ID) localStorage.setItem(VIEWER_KEY, String(MY_TEAM_ID));
+    else localStorage.removeItem(VIEWER_KEY);
+    renderAll();
+  };
+}
+
 document.getElementById('saveBtn').onclick = saveState;
+initViewerSelect();
 
 // ---------- Sleeper live sync ----------
 const SLEEPER_DRAFT_ID = "1378473537542565888";
@@ -527,7 +557,42 @@ async function syncFromSleeper(){
   const btn = document.getElementById('sleeperBtn');
   btn.disabled = true;
   setSleeperStatus("Fetching...");
+  let namesUpdated = 0;
   try{
+    // 1) pull real team names from the league (draft -> league_id -> rosters + users)
+    try{
+      const draftRes = await fetch(`https://api.sleeper.app/v1/draft/${SLEEPER_DRAFT_ID}`);
+      if(draftRes.ok){
+        const draftInfo = await draftRes.json();
+        const leagueId = draftInfo.league_id;
+        const slotToRoster = draftInfo.slot_to_roster_id || {};
+        if(leagueId){
+          const [rostersRes, usersRes] = await Promise.all([
+            fetch(`https://api.sleeper.app/v1/league/${leagueId}/rosters`),
+            fetch(`https://api.sleeper.app/v1/league/${leagueId}/users`),
+          ]);
+          if(rostersRes.ok && usersRes.ok){
+            const rosters = await rostersRes.json();
+            const users = await usersRes.json();
+            const rosterIdToOwner = {};
+            rosters.forEach(r=>{ rosterIdToOwner[r.roster_id] = r.owner_id; });
+            const ownerIdToName = {};
+            users.forEach(u=>{ ownerIdToName[u.user_id] = (u.metadata && u.metadata.team_name) || u.display_name; });
+            Object.entries(slotToRoster).forEach(([slot, rosterId])=>{
+              const team = teams.find(t=>t.id===parseInt(slot));
+              const ownerId = rosterIdToOwner[rosterId];
+              const realName = ownerId ? ownerIdToName[ownerId] : null;
+              if(team && realName && team.name !== realName){
+                team.name = realName;
+                namesUpdated++;
+              }
+            });
+          }
+        }
+      }
+    }catch(nameErr){ console.warn("Team name sync skipped:", nameErr); }
+
+    // 2) pull picks
     const res = await fetch(`https://api.sleeper.app/v1/draft/${SLEEPER_DRAFT_ID}/picks`);
     if(!res.ok) throw new Error("HTTP "+res.status);
     const picks = await res.json();
@@ -572,7 +637,9 @@ async function syncFromSleeper(){
     saveState();
     const now = new Date().toLocaleTimeString();
     document.getElementById('sleeperMeta').textContent =
-      `Last synced ${now} \u2022 ${matched} picks matched` + (unmatched.length ? ` \u2022 ${unmatched.length} unmatched: ${unmatched.slice(0,5).join(", ")}${unmatched.length>5?"...":""}` : "");
+      `Last synced ${now} \u2022 ${matched} picks matched` +
+      (namesUpdated ? ` \u2022 ${namesUpdated} team name(s) updated` : "") +
+      (unmatched.length ? ` \u2022 ${unmatched.length} unmatched: ${unmatched.slice(0,5).join(", ")}${unmatched.length>5?"...":""}` : "");
     setSleeperStatus("Synced");
   }catch(e){
     setSleeperStatus("Sync failed \u2014 check connection");
