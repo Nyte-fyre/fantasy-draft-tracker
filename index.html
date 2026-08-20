@@ -635,10 +635,81 @@ async function syncFromSleeper(){
 
     renderAll();
     saveState();
+
+    // 3) pull search_rank (ADP) and, where available, actual points from Sleeper's player data.
+    // Note: Sleeper's stats endpoint isn't officially supported anymore, so this step is best-effort
+    // and silently skipped on failure — it never blocks pick syncing above.
+    let adpUpdated = 0, ptsUpdated = 0, statsAttempted = false;
+    try{
+      // cache the big players/nfl file for 20h since it's ~5MB and shouldn't be pulled every load
+      const CACHE_KEY = "ff-2026-sleeper-players-cache";
+      const CACHE_TS_KEY = "ff-2026-sleeper-players-cache-ts";
+      let allPlayers = null;
+      const cachedTs = localStorage.getItem(CACHE_TS_KEY);
+      if(cachedTs && (Date.now() - parseInt(cachedTs)) < 20*60*60*1000){
+        try{ allPlayers = JSON.parse(localStorage.getItem(CACHE_KEY)); }catch(e){ allPlayers = null; }
+      }
+      if(!allPlayers){
+        const pRes = await fetch("https://api.sleeper.app/v1/players/nfl");
+        if(pRes.ok){
+          allPlayers = await pRes.json();
+          try{
+            localStorage.setItem(CACHE_KEY, JSON.stringify(allPlayers));
+            localStorage.setItem(CACHE_TS_KEY, String(Date.now()));
+          }catch(e){ /* storage quota, fine to skip caching */ }
+        }
+      }
+
+      if(allPlayers){
+        // build normalized-name -> sleeper player_id + search_rank
+        const rankByName = {};
+        const idByName = {};
+        Object.values(allPlayers).forEach(sp=>{
+          if(!sp || !sp.full_name) return;
+          const n = normName(sp.full_name);
+          rankByName[n] = sp.search_rank;
+          idByName[n] = sp.player_id;
+        });
+        players.forEach(p=>{
+          if(p.pos==="DST") return; // Sleeper ranks these separately/inconsistently, skip
+          const n = normName(p.name);
+          const rank = rankByName[n];
+          if(rank && rank > 0 && rank < 9999 && p.adp !== rank){
+            p.adp = rank;
+            adpUpdated++;
+          }
+        });
+
+        // best-effort: last season's actual points as a real-data stand-in for "projected" points
+        statsAttempted = true;
+        try{
+          const sRes = await fetch("https://api.sleeper.app/v1/stats/nfl/regular/2025");
+          if(sRes.ok){
+            const statsById = await sRes.json();
+            players.forEach(p=>{
+              if(p.pos==="DST") return;
+              const n = normName(p.name);
+              const pid = idByName[n];
+              const stat = pid ? statsById[pid] : null;
+              if(stat && typeof stat.pts_ppr === "number" && stat.pts_ppr > 0){
+                p.pts = Math.round(stat.pts_ppr);
+                ptsUpdated++;
+              }
+            });
+          }
+        }catch(statsErr){ console.warn("Sleeper stats fetch failed (endpoint may be deprecated):", statsErr); }
+
+        renderAll();
+        saveState();
+      }
+    }catch(rankErr){ console.warn("Sleeper ADP/points sync skipped:", rankErr); }
+
     const now = new Date().toLocaleTimeString();
     document.getElementById('sleeperMeta').textContent =
       `Last synced ${now} \u2022 ${matched} picks matched` +
       (namesUpdated ? ` \u2022 ${namesUpdated} team name(s) updated` : "") +
+      (adpUpdated ? ` \u2022 ${adpUpdated} ADP updated` : "") +
+      (ptsUpdated ? ` \u2022 ${ptsUpdated} points updated` : (statsAttempted ? ` \u2022 points sync unavailable (Sleeper stats endpoint)` : "")) +
       (unmatched.length ? ` \u2022 ${unmatched.length} unmatched: ${unmatched.slice(0,5).join(", ")}${unmatched.length>5?"...":""}` : "");
     setSleeperStatus("Synced");
   }catch(e){
