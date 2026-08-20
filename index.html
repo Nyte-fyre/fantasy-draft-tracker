@@ -71,10 +71,13 @@
   <div class="sub">10-team snake draft &middot; auto-tracks ADP and projected points per team &middot; saves locally in this browser</div>
 
   <div class="clock" id="clock"></div>
-  <div id="saveBar" style="display:flex;gap:10px;align-items:center;margin:-8px 0 18px;font-size:12px;color:var(--sub);">
+  <div id="saveBar" style="display:flex;gap:10px;align-items:center;margin:-8px 0 8px;font-size:12px;color:var(--sub);flex-wrap:wrap;">
     <button id="saveBtn" style="background:var(--gold);color:#1a1a1a;border:none;font-weight:600;">Save progress</button>
+    <button id="sleeperBtn" style="background:var(--accent);color:#fff;border:none;font-weight:600;">Sync from Sleeper</button>
     <span id="saveStatus"></span>
+    <span id="sleeperStatus"></span>
   </div>
+  <div id="sleeperMeta" style="font-size:11px;color:var(--sub);margin:-4px 0 18px;"></div>
 
   <div class="best" id="bestAvail"></div>
 
@@ -507,10 +510,85 @@ function loadState(){
 
 document.getElementById('saveBtn').onclick = saveState;
 
+// ---------- Sleeper live sync ----------
+const SLEEPER_DRAFT_ID = "1378473537542565888";
+function normName(s){
+  return (s||"").toLowerCase()
+    .replace(/[.'']/g,"")
+    .replace(/\b(jr|sr|ii|iii|iv|v)\b/g,"")
+    .replace(/\s+/g," ")
+    .trim();
+}
+function setSleeperStatus(msg){
+  const el = document.getElementById('sleeperStatus');
+  el.textContent = msg;
+}
+async function syncFromSleeper(){
+  const btn = document.getElementById('sleeperBtn');
+  btn.disabled = true;
+  setSleeperStatus("Fetching...");
+  try{
+    const res = await fetch(`https://api.sleeper.app/v1/draft/${SLEEPER_DRAFT_ID}/picks`);
+    if(!res.ok) throw new Error("HTTP "+res.status);
+    const picks = await res.json();
+    if(!Array.isArray(picks)) throw new Error("Unexpected response");
+
+    // build a normalized-name lookup for skill positions
+    const byName = {};
+    players.forEach(p=>{ if(p.pos!=="DST") byName[normName(p.name)] = p; });
+
+    let matched=0, unmatched=[];
+    picks.forEach(pick=>{
+      if(!pick.metadata) return;
+      const slot = pick.draft_slot; // 1..10, matches our team id ordering
+      const team = teams.find(t=>t.id===slot);
+      if(!team) return;
+
+      let player = null;
+      if(pick.metadata.position === "DEF"){
+        const teamAbbr = (pick.metadata.team || pick.player_id || "").toUpperCase();
+        player = players.find(p=>p.pos==="DST" && p.team.toUpperCase()===teamAbbr);
+      } else {
+        const full = normName(`${pick.metadata.first_name||""} ${pick.metadata.last_name||""}`);
+        player = byName[full];
+      }
+
+      if(player){
+        if(player.ownerId !== team.id){
+          if(player.ownerId){
+            const oldTeam = teams.find(t=>t.id===player.ownerId);
+            if(oldTeam) oldTeam.picks = oldTeam.picks.filter(n=>n!==player.name);
+          }
+          player.ownerId = team.id;
+          if(!team.picks.includes(player.name)) team.picks.push(player.name);
+        }
+        matched++;
+      } else {
+        unmatched.push(`${pick.metadata.first_name||""} ${pick.metadata.last_name||""}`.trim());
+      }
+    });
+
+    renderAll();
+    saveState();
+    const now = new Date().toLocaleTimeString();
+    document.getElementById('sleeperMeta').textContent =
+      `Last synced ${now} \u2022 ${matched} picks matched` + (unmatched.length ? ` \u2022 ${unmatched.length} unmatched: ${unmatched.slice(0,5).join(", ")}${unmatched.length>5?"...":""}` : "");
+    setSleeperStatus("Synced");
+  }catch(e){
+    setSleeperStatus("Sync failed \u2014 check connection");
+    console.error(e);
+  }finally{
+    btn.disabled = false;
+    setTimeout(()=>setSleeperStatus(""), 3000);
+  }
+}
+document.getElementById('sleeperBtn').onclick = syncFromSleeper;
+
 (function init(){
   const loaded = loadState();
   renderAll();
   if(loaded) setStatus("Loaded saved draft");
+  syncFromSleeper(); // auto-sync on page load
 })();
 </script>
 </body>
