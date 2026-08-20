@@ -103,7 +103,7 @@
       <div class="postab" id="posTab"></div>
       <div class="scroll">
         <table>
-          <thead><tr><th>ADP</th><th>Player</th><th>Pos</th><th>Pts</th><th>vs top</th><th>Status</th></tr></thead>
+          <thead><tr><th>ADP</th><th>Player</th><th>Pos</th><th>2026 Proj</th><th>2025 Actual</th><th>vs top</th><th>Status</th></tr></thead>
           <tbody id="poolBody"></tbody>
         </table>
       </div>
@@ -266,7 +266,8 @@ function estPts(pos, rank){
 }
 let players = RAW.map(r=>({
   adp:r[0], name:r[1], team:r[2], pos:r[3],
-  pts: (r[4]===null ? estPts(r[3], r[0]) : r[4]),
+  pts: (r[4]===null ? estPts(r[3], r[0]) : r[4]), // 2026 projection (editable, tier-based estimate)
+  pts2025: null, // 2025 actual points, filled in only after a Sleeper sync
   ownerId:null
 }));
 // de-dupe by name (a couple of names repeat across source lists)
@@ -398,6 +399,7 @@ function renderPool(){
       <td>${p.name} <span style="color:var(--sub);font-size:11px;">${p.team}</span></td>
       <td><span class="postag ${p.pos}">${p.pos}</span></td>
       <td contenteditable="true" data-name="${p.name.replace(/"/g,'&quot;')}" class="ptsEdit">${p.pts}</td>
+      <td style="color:var(--sub);">${p.pts2025!==null ? p.pts2025 : '<span style="font-size:11px;">not synced</span>'}</td>
       <td>${diffCell}</td>
       <td>${taken
         ? `<span style="color:var(--sub)">${ownerName}</span>`
@@ -496,7 +498,7 @@ function saveState(){
     const state = {
       teams: teams.map(t=>({id:t.id, name:t.name, nickname:t.nickname||""})),
       owners: players.filter(p=>p.ownerId!==null).map(p=>({name:p.name, ownerId:p.ownerId})),
-      pts: players.map(p=>({name:p.name, pts:p.pts})),
+      pts: players.map(p=>({name:p.name, pts:p.pts, pts2025:p.pts2025})),
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     setStatus("Saved");
@@ -513,7 +515,7 @@ function loadState(){
     });
     state.pts.forEach(pp=>{
       const p = players.find(pl=>pl.name===pp.name);
-      if(p) p.pts = pp.pts;
+      if(p){ p.pts = pp.pts; if(pp.pts2025!==undefined) p.pts2025 = pp.pts2025; }
     });
     teams.forEach(t=>t.picks=[]);
     state.owners.forEach(o=>{
@@ -687,7 +689,7 @@ async function syncFromSleeper(){
           }
         });
 
-        // best-effort: last season's actual points as a real-data stand-in for "projected" points
+        // last season's actual points — stored SEPARATELY from projections, never overwrites p.pts
         statsAttempted = true;
         try{
           const sRes = await fetch("https://api.sleeper.app/v1/stats/nfl/regular/2025");
@@ -699,7 +701,7 @@ async function syncFromSleeper(){
               const pid = idByName[n];
               const stat = pid ? statsById[pid] : null;
               if(stat && typeof stat.pts_ppr === "number" && stat.pts_ppr > 0){
-                p.pts = Math.round(stat.pts_ppr);
+                p.pts2025 = Math.round(stat.pts_ppr);
                 ptsUpdated++;
               }
             });
@@ -716,7 +718,7 @@ async function syncFromSleeper(){
       `Last synced ${now} \u2022 ${matched} picks matched` +
       (namesUpdated ? ` \u2022 ${namesUpdated} team name(s) updated` : "") +
       (adpUpdated ? ` \u2022 ${adpUpdated} ADP updated` : "") +
-      (ptsUpdated ? ` \u2022 ${ptsUpdated} points updated` : (statsAttempted ? ` \u2022 points sync unavailable (Sleeper stats endpoint)` : "")) +
+      (ptsUpdated ? ` \u2022 ${ptsUpdated} 2025 actuals filled in` : (statsAttempted ? ` \u2022 2025 actuals unavailable (Sleeper stats endpoint)` : "")) +
       (unmatched.length ? ` \u2022 ${unmatched.length} unmatched: ${unmatched.slice(0,5).join(", ")}${unmatched.length>5?"...":""}` : "");
     setSleeperStatus("Synced");
   }catch(e){
