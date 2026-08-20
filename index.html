@@ -276,16 +276,16 @@ for(let i=1;i<=N_TEAMS;i++){
 
 // preload the league's actual draft results so far (by team id, matching TEAM_NAMES order)
 const DRAFT_STATE = {
-  1: ["Bijan Robinson","Drake London","Cam Skattebo","DeVonta Smith","D'Andre Swift","Drake Maye","Harold Fannin"],
+  1: ["Bijan Robinson","Drake London","Cam Skattebo","DeVonta Smith","D'Andre Swift","Drake Maye","Harold Fannin","Brandon Aubrey","Los Angeles Rams D/ST"],
   2: ["Jahmyr Gibbs","Nico Collins","Travis Etienne Jr.","Josh Allen","Tetairoa McMillan","Mike Evans","Carnell Tate","Rhamondre Stevenson","Kyle Pitts"],
-  3: ["Puka Nacua","Kenneth Walker III","Omarion Hampton","Colston Loveland","Zay Flowers","Jameson Williams","Rico Dowdle","DK Metcalf"],
-  4: ["Ja'Marr Chase","Saquon Barkley","Derrick Henry","Ladd McConkey","Emeka Egbuka","Bhayshul Tuten","Christian Watson","Sam LaPorta"],
-  5: ["Amon-Ra St. Brown","Ashton Jeanty","Rashee Rice","Breece Hall","Bucky Irving","Jayden Daniels","Luther Burden III"],
-  6: ["Christian McCaffrey","A.J. Brown","Trey McBride","Javonte Williams","Garrett Wilson","Joe Burrow","D.J. Moore"],
-  7: ["Jaxon Smith-Njigba","Brock Bowers","Chase Brown","Josh Jacobs","Jaylen Waddle","Davante Adams","Jadarian Price","Dak Prescott"],
+  3: ["Puka Nacua","Kenneth Walker III","Omarion Hampton","Colston Loveland","Zay Flowers","Jameson Williams","Rico Dowdle","DK Metcalf","Matthew Stafford"],
+  4: ["Ja'Marr Chase","Saquon Barkley","Derrick Henry","Ladd McConkey","Emeka Egbuka","Bhayshul Tuten","Christian Watson","Sam LaPorta","Jaxson Dart"],
+  5: ["Amon-Ra St. Brown","Ashton Jeanty","Rashee Rice","Breece Hall","Bucky Irving","Jayden Daniels","Luther Burden III","Michael Wilson","Dalton Kincaid"],
+  6: ["Christian McCaffrey","A.J. Brown","Trey McBride","Javonte Williams","Garrett Wilson","Joe Burrow","D.J. Moore","Jake Ferguson","Kyle Monangai"],
+  7: ["Jaxon Smith-Njigba","Brock Bowers","Chase Brown","Josh Jacobs","Jaylen Waddle","Davante Adams","Jadarian Price","Dak Prescott","RJ Harvey"],
   8: ["Justin Jefferson","De'Von Achane","Malik Nabers","Lamar Jackson","Quinshon Judkins","Tyler Warren","Rome Odunze","Jaylen Warren"],
-  9: ["Jonathan Taylor","CeeDee Lamb","Kyren Williams","Chris Olave","TreVeyon Henderson","Terry McLaurin","Tucker Kraft"],
-  10: ["James Cook","George Pickens","Jeremiyah Love","Tee Higgins","David Montgomery","Jalen Hurts","Brian Thomas Jr."],
+  9: ["Jonathan Taylor","CeeDee Lamb","Kyren Williams","Chris Olave","TreVeyon Henderson","Terry McLaurin","Tucker Kraft","Caleb Williams"],
+  10: ["James Cook","George Pickens","Jeremiyah Love","Tee Higgins","David Montgomery","Jalen Hurts","Brian Thomas Jr.","Travis Kelce"],
 };
 Object.entries(DRAFT_STATE).forEach(([teamId, names])=>{
   const id = parseInt(teamId);
