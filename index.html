@@ -95,6 +95,10 @@
           <option value="pts">Sort: Proj. points</option>
           <option value="name">Sort: Name</option>
         </select>
+        <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--sub);white-space:nowrap;cursor:pointer;">
+          <input type="checkbox" id="showTaken" checked style="cursor:pointer;">
+          Show taken players
+        </label>
       </div>
       <div class="postab" id="posTab"></div>
       <div class="scroll">
@@ -356,6 +360,7 @@ function renderPosTab(){
 function renderPool(){
   const q = document.getElementById('search').value.trim().toLowerCase();
   const sortBy = document.getElementById('sortBy').value;
+  const showTaken = document.getElementById('showTaken').checked;
   // baseline per position = pts of the current top-ADP undrafted player at that pos
   const baselines = {}; const baselineNames = {};
   ["QB","RB","WR","TE","DST","K"].forEach(pos=>{
@@ -366,6 +371,7 @@ function renderPool(){
   let list = players.filter(p=>{
     if(activePos!=="ALL" && p.pos!==activePos) return false;
     if(q && !(p.name.toLowerCase().includes(q)||p.team.toLowerCase().includes(q))) return false;
+    if(!showTaken && p.ownerId!==null) return false;
     return true;
   });
   list.sort((a,b)=>{
@@ -475,6 +481,7 @@ function renderAll(){
 
 document.getElementById('search').oninput = renderPool;
 document.getElementById('sortBy').onchange = renderPool;
+document.getElementById('showTaken').onchange = renderPool;
 renderPosTab();
 
 // ---------- persistence (localStorage — works in any browser, incl. GitHub Pages) ----------
