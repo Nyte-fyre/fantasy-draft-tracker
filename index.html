@@ -103,7 +103,7 @@
       <div class="postab" id="posTab"></div>
       <div class="scroll">
         <table>
-          <thead><tr><th>ADP</th><th>Player</th><th>Pos</th><th>2026 Proj</th><th>2025 Actual</th><th>vs top</th><th>Status</th></tr></thead>
+          <thead><tr><th>ADP</th><th>Player</th><th>Pos</th><th>Pts</th><th>vs top</th><th>Status</th></tr></thead>
           <tbody id="poolBody"></tbody>
         </table>
       </div>
@@ -120,74 +120,74 @@
 <script>
 // ---------- Player data: [adp rank, name, team, pos, est proj pts] ----------
 let RAW = [
-[1,"Jahmyr Gibbs","DET","RB",312],[2,"Bijan Robinson","ATL","RB",305],
-[3,"Ja'Marr Chase","CIN","WR",298],[4,"Puka Nacua","LAR","WR",286],
-[5,"Jaxon Smith-Njigba","SEA","WR",280],[6,"Christian McCaffrey","SF","RB",288],
-[7,"Amon-Ra St. Brown","DET","WR",274],[8,"Jonathan Taylor","IND","RB",278],
-[9,"Justin Jefferson","MIN","WR",270],[10,"CeeDee Lamb","DAL","WR",266],
-[11,"James Cook","BUF","RB",262],[12,"Saquon Barkley","PHI","RB",260],
-[13,"De'Von Achane","MIA","RB",258],[14,"Drake London","ATL","WR",252],
-[15,"Ashton Jeanty","LV","RB",250],[16,"Nico Collins","HOU","WR",248],
-[17,"Brock Bowers","LV","TE",232],[18,"Derrick Henry","BAL","RB",244],
-[19,"Kenneth Walker III","KC","RB",238],[20,"Chase Brown","CIN","RB",236],
-[21,"A.J. Brown","PHI","WR",238],[22,"Malik Nabers","NYG","WR",236],
-[23,"Rashee Rice","KC","WR",234],[24,"George Pickens","DAL","WR",230],
-[25,"Omarion Hampton","LAC","RB",228],[26,"Trey McBride","ARI","TE",214],
+[1,"Jahmyr Gibbs","DET","RB",373],[2,"Bijan Robinson","ATL","RB",370],
+[3,"Ja'Marr Chase","CIN","WR",336],[4,"Puka Nacua","LAR","WR",340],
+[5,"Jaxon Smith-Njigba","SEA","WR",324],[6,"Christian McCaffrey","SF","RB",335],
+[7,"Amon-Ra St. Brown","DET","WR",320],[8,"Jonathan Taylor","IND","RB",310],
+[9,"Justin Jefferson","MIN","WR",273],[10,"CeeDee Lamb","DAL","WR",273],
+[11,"James Cook","BUF","RB",271],[12,"Saquon Barkley","PHI","RB",265],
+[13,"De'Von Achane","MIA","RB",292],[14,"Drake London","ATL","WR",287],
+[15,"Ashton Jeanty","LV","RB",277],[16,"Nico Collins","HOU","WR",240],
+[17,"Brock Bowers","LV","TE",244],[18,"Derrick Henry","BAL","RB",274],
+[19,"Kenneth Walker III","KC","RB",238],[20,"Chase Brown","CIN","RB",279],
+[21,"A.J. Brown","PHI","WR",255],[22,"Malik Nabers","NYG","WR",236],
+[23,"Rashee Rice","KC","WR",274],[24,"George Pickens","DAL","WR",230],
+[25,"Omarion Hampton","LAC","RB",228],[26,"Trey McBride","ARI","TE",254],
 [27,"Jeremiyah Love","ARI","RB",222],[28,"Breece Hall","NYJ","RB",220],
-[29,"Kyren Williams","LAR","RB",218],[30,"Travis Etienne Jr.","NO","RB",216],
-[31,"Josh Allen","BUF","QB",378],[32,"Josh Jacobs","GB","RB",212],
-[33,"Javonte Williams","DAL","RB",208],[34,"Tetairoa McMillan","CAR","WR",222],
-[35,"Colston Loveland","CHI","TE",190],[36,"Tee Higgins","CIN","WR",216],
-[37,"Chris Olave","NO","WR",212],[38,"Bucky Irving","TB","RB",204],
-[39,"Lamar Jackson","BAL","QB",368],[40,"Zay Flowers","BAL","WR",208],
+[29,"Kyren Williams","LAR","RB",218],[30,"Travis Etienne Jr.","NO","RB",220],
+[31,"Josh Allen","BUF","QB",373],[32,"Josh Jacobs","GB","RB",212],
+[33,"Javonte Williams","DAL","RB",208],[34,"Tetairoa McMillan","CAR","WR",215],
+[35,"Colston Loveland","CHI","TE",211],[36,"Tee Higgins","CIN","WR",216],
+[37,"Chris Olave","NO","WR",262],[38,"Bucky Irving","TB","RB",204],
+[39,"Lamar Jackson","BAL","QB",325],[40,"Zay Flowers","BAL","WR",208],
 [41,"Ladd McConkey","LAC","WR",206],[42,"Emeka Egbuka","TB","WR",204],
 [43,"Cam Skattebo","NYG","RB",198],[44,"David Montgomery","HOU","RB",196],
 [45,"DeVonta Smith","PHI","WR",200],[46,"Garrett Wilson","NYJ","WR",198],
-[47,"D'Andre Swift","CHI","RB",192],[48,"Jayden Daniels","WAS","QB",352],
-[49,"Quinshon Judkins","CLE","RB",188],[50,"Mike Evans","SF","WR",196],
+[47,"D'Andre Swift","CHI","RB",192],[48,"Jayden Daniels","WAS","QB",323],
+[49,"Quinshon Judkins","CLE","RB",188],[50,"Mike Evans","SF","WR",130],
 [51,"Jaylen Waddle","DEN","WR",192],[52,"Bhayshul Tuten","JAX","RB",180],
-[53,"TreVeyon Henderson","NE","RB",178],[54,"Joe Burrow","CIN","QB",344],
+[53,"TreVeyon Henderson","NE","RB",178],[54,"Joe Burrow","CIN","QB",311],
 [55,"Davante Adams","LAR","WR",188],[56,"Jadarian Price","SEA","RB",174],
-[57,"Drake Maye","NE","QB",338],[58,"Terry McLaurin","WAS","WR",184],
-[59,"Jameson Williams","DET","WR",182],[60,"Tyler Warren","IND","TE",176],
-[61,"Luther Burden III","CHI","WR",176],[62,"Carnell Tate","TEN","WR",172],
-[63,"Jalen Hurts","PHI","QB",334],[64,"Christian Watson","GB","WR",170],
+[57,"Drake Maye","NE","QB",323],[58,"Terry McLaurin","WAS","WR",184],
+[59,"Jameson Williams","DET","WR",182],[60,"Tyler Warren","IND","TE",199],
+[61,"Luther Burden III","CHI","WR",176],[62,"Carnell Tate","TEN","WR",150],
+[63,"Jalen Hurts","PHI","QB",321],[64,"Christian Watson","GB","WR",170],
 [65,"Rome Odunze","CHI","WR",168],[66,"D.J. Moore","BUF","WR",166],
 [67,"Jaylen Warren","PIT","RB",166],[68,"Blake Corum","LAR","RB",162],
 [69,"Brian Thomas Jr.","JAX","WR",164],[70,"Parker Washington","JAX","WR",158],
-[71,"Dak Prescott","DAL","QB",324],[72,"Marvin Harrison Jr.","ARI","WR",160],
+[71,"Dak Prescott","DAL","QB",306],[72,"Marvin Harrison Jr.","ARI","WR",160],
 [73,"Tony Pollard","TEN","RB",172],[74,"Kyle Monangai","CHI","RB",150],
-[75,"Harold Fannin","CLE","TE",158],[76,"Rico Dowdle","PIT","RB",164],
-[77,"DK Metcalf","PIT","WR",156],[78,"Rhamondre Stevenson","NE","RB",168],
+[75,"Harold Fannin","CLE","TE",191],[76,"Rico Dowdle","PIT","RB",164],
+[77,"DK Metcalf","PIT","WR",156],[78,"Rhamondre Stevenson","NE","RB",170],
 [79,"Justin Herbert","LAC","QB",318],[80,"Jordyn Tyson","NO","WR",150],
 [81,"Jordan Addison","MIN","WR",148],[82,"Josh Downs","IND","WR",146],
 [83,"J.K. Dobbins","DEN","RB",156],[84,"RJ Harvey","DEN","RB",154],
-[85,"Tucker Kraft","GB","TE",148],[86,"Makai Lemon","PHI","WR",140],
+[85,"Tucker Kraft","GB","TE",178],[86,"Makai Lemon","PHI","WR",140],
 [87,"Michael Wilson","ARI","WR",138],[88,"Jonathon Brooks","CAR","RB",144],
-[89,"Patrick Mahomes","KC","QB",312],[90,"Sam LaPorta","DET","TE",142],
+[89,"Patrick Mahomes","KC","QB",312],[90,"Sam LaPorta","DET","TE",184],
 [91,"Caleb Williams","CHI","QB",308],[92,"Jayden Reed","GB","WR",136],
 [93,"Courtland Sutton","DEN","WR",134],[94,"Chris Godwin","TB","WR",132],
 [95,"Jakobi Meyers","JAX","WR",130],[96,"Chuba Hubbard","CAR","RB",140],
-[97,"Kyle Pitts","ATL","TE",136],[98,"Rachaad White","WAS","RB",134],
+[97,"Kyle Pitts","ATL","TE",196],[98,"Rachaad White","WAS","RB",134],
 [99,"Aaron Jones","MIN","RB",132],[100,"Jaxson Dart","NYG","QB",298],
 [101,"Wan'Dale Robinson","TEN","WR",null],[102,"Chris Rodriguez","JAX","RB",null],
 [103,"Kenneth Gainwell","TB","RB",null],[104,"Romeo Doubs","NE","WR",null],
 [105,"Xavier Worthy","KC","WR",null],[106,"Alec Pierce","IND","WR",null],
 [107,"Stefon Diggs","WAS","WR",null],[108,"Jordan Love","GB","QB",null],
-[109,"Brock Purdy","SF","QB",null],[110,"KC Concepcion","CLE","WR",null],
+[109,"Brock Purdy","SF","QB",308],[110,"KC Concepcion","CLE","WR",null],
 [111,"Jordan Mason","MIN","RB",null],[112,"Jacory Croskey-Merritt","WAS","RB",null],
 [113,"Quentin Johnston","LAC","WR",null],[114,"Matthew Stafford","LAR","QB",null],
 [115,"Keaton Mitchell","LAC","RB",null],[116,"Jake Ferguson","DAL","TE",null],
-[117,"Woody Marks","HOU","RB",null],[118,"Trevor Lawrence","JAX","QB",null],
+[117,"Woody Marks","HOU","RB",null],[118,"Trevor Lawrence","JAX","QB",306],
 [119,"Matthew Golden","GB","WR",null],[120,"Dalton Kincaid","BUF","TE",null],
-[121,"Travis Kelce","KC","TE",null],[122,"Travis Hunter","JAX","WR",null],
+[121,"Travis Kelce","KC","TE",182],[122,"Travis Hunter","JAX","WR",null],
 [123,"Jared Goff","DET","QB",null],[124,"Michael Pittman Jr.","PIT","WR",null],
 [125,"Tyrone Tracy Jr.","NYG","RB",null],[126,"Kyler Murray","MIN","QB",null],
 [127,"Mark Andrews","BAL","TE",null],[128,"Bo Nix","DEN","QB",null],
-[129,"Khalil Shakir","BUF","WR",null],[130,"George Kittle","SF","TE",null],
+[129,"Khalil Shakir","BUF","WR",null],[130,"George Kittle","SF","TE",158],
 [131,"Tyler Allgeier","ARI","RB",null],[132,"Omar Cooper Jr.","NYJ","WR",null],
 [133,"Jayden Higgins","HOU","WR",null],[134,"Baker Mayfield","TB","QB",null],
-[135,"Dallas Goedert","PHI","TE",null],[136,"Deebo Samuel","FA","WR",null],
+[135,"Dallas Goedert","PHI","TE",179],[136,"Deebo Samuel","FA","WR",null],
 [137,"Jalen Coker","CAR","WR",null],[138,"Dylan Sampson","CLE","RB",null],
 [139,"Tyjae Spears","TEN","RB",null],[140,"Oronde Gadsden II","LAC","TE",null],
 [141,"Jauan Jennings","MIN","WR",null],[142,"Rashid Shaheed","SEA","WR",null],
@@ -221,13 +221,13 @@ let RAW = [
 [197,"Christian Kirk","SF","WR",null],[198,"Darnell Mooney","NYG","WR",null],
 [199,"Darren Waller","CAR","TE",null],[200,"Woody Marks","HOU","RB",null],
 ];
-// Defense/Special Teams — ranked roughly by 2025 defensive performance / 2026 outlook
+// Defense/Special Teams — top 10 use confirmed FantasyPros 2026 projected FPTS, rest are estimated decay
 const DST = [
-["Denver Broncos","DEN"],["Philadelphia Eagles","PHI"],["Pittsburgh Steelers","PIT"],
-["Houston Texans","HOU"],["Minnesota Vikings","MIN"],["Seattle Seahawks","SEA"],
-["Baltimore Ravens","BAL"],["San Francisco 49ers","SF"],["Green Bay Packers","GB"],
-["Detroit Lions","DET"],["Buffalo Bills","BUF"],["Kansas City Chiefs","KC"],
-["Los Angeles Chargers","LAC"],["Los Angeles Rams","LAR"],["Cincinnati Bengals","CIN"],
+["Houston Texans","HOU"],["Denver Broncos","DEN"],["Minnesota Vikings","MIN"],
+["Pittsburgh Steelers","PIT"],["Seattle Seahawks","SEA"],["Los Angeles Chargers","LAC"],
+["Los Angeles Rams","LAR"],["Detroit Lions","DET"],["Buffalo Bills","BUF"],
+["Philadelphia Eagles","PHI"],["Baltimore Ravens","BAL"],["San Francisco 49ers","SF"],
+["Green Bay Packers","GB"],["Kansas City Chiefs","KC"],["Cincinnati Bengals","CIN"],
 ["Indianapolis Colts","IND"],["Dallas Cowboys","DAL"],["New York Jets","NYJ"],
 ["Tampa Bay Buccaneers","TB"],["Cleveland Browns","CLE"],["Arizona Cardinals","ARI"],
 ["Miami Dolphins","MIA"],["Atlanta Falcons","ATL"],["Chicago Bears","CHI"],
@@ -235,6 +235,7 @@ const DST = [
 ["Jacksonville Jaguars","JAX"],["Tennessee Titans","TEN"],["Carolina Panthers","CAR"],
 ["New York Giants","NYG"],["Las Vegas Raiders","LV"],
 ];
+const DST_CONFIRMED_PTS = [120,118,113,112,111,109,108,107,107,103]; // HOU..PHI, FantasyPros consensus
 // Kickers — ranked roughly by offense quality / scoring volume
 const KICKERS = [
 ["Brandon Aubrey","DAL"],["Jake Bates","DET"],["Chris Boswell","PIT"],["Cameron Dicker","LAC"],
@@ -249,7 +250,8 @@ const KICKERS = [
 let idCounter = 201;
 const extras = [];
 DST.forEach((d,i)=>{
-  extras.push([idCounter, d[0]+" D/ST", d[1], "DST", Math.round(135 - i*1.8)]);
+  const pts = i < DST_CONFIRMED_PTS.length ? DST_CONFIRMED_PTS[i] : Math.round(100 - (i-10)*3);
+  extras.push([idCounter, d[0]+" D/ST", d[1], "DST", pts]);
   idCounter++;
 });
 KICKERS.forEach((k,i)=>{
@@ -266,8 +268,7 @@ function estPts(pos, rank){
 }
 let players = RAW.map(r=>({
   adp:r[0], name:r[1], team:r[2], pos:r[3],
-  pts: (r[4]===null ? estPts(r[3], r[0]) : r[4]), // 2026 projection (editable, tier-based estimate)
-  pts2025: null, // 2025 actual points, filled in only after a Sleeper sync
+  pts: (r[4]===null ? estPts(r[3], r[0]) : r[4]), // 2026 projection, based on FantasyPros consensus where available
   ownerId:null
 }));
 // de-dupe by name (a couple of names repeat across source lists)
@@ -399,7 +400,6 @@ function renderPool(){
       <td>${p.name} <span style="color:var(--sub);font-size:11px;">${p.team}</span></td>
       <td><span class="postag ${p.pos}">${p.pos}</span></td>
       <td contenteditable="true" data-name="${p.name.replace(/"/g,'&quot;')}" class="ptsEdit">${p.pts}</td>
-      <td style="color:var(--sub);">${p.pts2025!==null ? p.pts2025 : '<span style="font-size:11px;">not synced</span>'}</td>
       <td>${diffCell}</td>
       <td>${taken
         ? `<span style="color:var(--sub)">${ownerName}</span>`
@@ -498,7 +498,7 @@ function saveState(){
     const state = {
       teams: teams.map(t=>({id:t.id, name:t.name, nickname:t.nickname||""})),
       owners: players.filter(p=>p.ownerId!==null).map(p=>({name:p.name, ownerId:p.ownerId})),
-      pts: players.map(p=>({name:p.name, pts:p.pts, pts2025:p.pts2025})),
+      pts: players.map(p=>({name:p.name, pts:p.pts})),
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     setStatus("Saved");
@@ -515,7 +515,7 @@ function loadState(){
     });
     state.pts.forEach(pp=>{
       const p = players.find(pl=>pl.name===pp.name);
-      if(p){ p.pts = pp.pts; if(pp.pts2025!==undefined) p.pts2025 = pp.pts2025; }
+      if(p) p.pts = pp.pts;
     });
     teams.forEach(t=>t.picks=[]);
     state.owners.forEach(o=>{
@@ -648,7 +648,7 @@ async function syncFromSleeper(){
     // 3) pull search_rank (ADP) and, where available, actual points from Sleeper's player data.
     // Note: Sleeper's stats endpoint isn't officially supported anymore, so this step is best-effort
     // and silently skipped on failure — it never blocks pick syncing above.
-    let adpUpdated = 0, ptsUpdated = 0, statsAttempted = false;
+    let adpUpdated = 0;
     try{
       // cache the big players/nfl file for 20h since it's ~5MB and shouldn't be pulled every load
       const CACHE_KEY = "ff-2026-sleeper-players-cache";
@@ -670,55 +670,42 @@ async function syncFromSleeper(){
       }
 
       if(allPlayers){
-        // build normalized-name -> sleeper player_id + search_rank
-        const rankByName = {};
-        const idByName = {};
+        // build normalized-"name|position" -> sleeper player_id + search_rank.
+        // Keying on position too prevents cross-position name collisions (e.g. Sleeper has
+        // more than one "Lamar Jackson" in its database, at different positions) from
+        // silently overwriting the real player's rank with an irrelevant one.
+        const rankByKey = {};
+        const idByKey = {};
         Object.values(allPlayers).forEach(sp=>{
-          if(!sp || !sp.full_name) return;
-          const n = normName(sp.full_name);
-          rankByName[n] = sp.search_rank;
-          idByName[n] = sp.player_id;
+          if(!sp || !sp.full_name || !sp.position) return;
+          if(!sp.search_rank || sp.search_rank <= 0 || sp.search_rank >= 9999) return; // unranked/irrelevant
+          const key = normName(sp.full_name) + "|" + sp.position;
+          // if we already have an entry for this exact name+position, keep whichever is more relevant (lower rank)
+          if(!(key in rankByKey) || sp.search_rank < rankByKey[key]){
+            rankByKey[key] = sp.search_rank;
+            idByKey[key] = sp.player_id;
+          }
         });
         players.forEach(p=>{
           if(p.pos==="DST") return; // Sleeper ranks these separately/inconsistently, skip
-          const n = normName(p.name);
-          const rank = rankByName[n];
-          if(rank && rank > 0 && rank < 9999 && p.adp !== rank){
+          const key = normName(p.name) + "|" + p.pos;
+          const rank = rankByKey[key];
+          if(rank && p.adp !== rank){
             p.adp = rank;
             adpUpdated++;
           }
         });
 
-        // last season's actual points — stored SEPARATELY from projections, never overwrites p.pts
-        statsAttempted = true;
-        try{
-          const sRes = await fetch("https://api.sleeper.app/v1/stats/nfl/regular/2025");
-          if(sRes.ok){
-            const statsById = await sRes.json();
-            players.forEach(p=>{
-              if(p.pos==="DST") return;
-              const n = normName(p.name);
-              const pid = idByName[n];
-              const stat = pid ? statsById[pid] : null;
-              if(stat && typeof stat.pts_ppr === "number" && stat.pts_ppr > 0){
-                p.pts2025 = Math.round(stat.pts_ppr);
-                ptsUpdated++;
-              }
-            });
-          }
-        }catch(statsErr){ console.warn("Sleeper stats fetch failed (endpoint may be deprecated):", statsErr); }
-
         renderAll();
         saveState();
       }
-    }catch(rankErr){ console.warn("Sleeper ADP/points sync skipped:", rankErr); }
+    }catch(rankErr){ console.warn("Sleeper ADP sync skipped:", rankErr); }
 
     const now = new Date().toLocaleTimeString();
     document.getElementById('sleeperMeta').textContent =
       `Last synced ${now} \u2022 ${matched} picks matched` +
       (namesUpdated ? ` \u2022 ${namesUpdated} team name(s) updated` : "") +
       (adpUpdated ? ` \u2022 ${adpUpdated} ADP updated` : "") +
-      (ptsUpdated ? ` \u2022 ${ptsUpdated} 2025 actuals filled in` : (statsAttempted ? ` \u2022 2025 actuals unavailable (Sleeper stats endpoint)` : "")) +
       (unmatched.length ? ` \u2022 ${unmatched.length} unmatched: ${unmatched.slice(0,5).join(", ")}${unmatched.length>5?"...":""}` : "");
     setSleeperStatus("Synced");
   }catch(e){
