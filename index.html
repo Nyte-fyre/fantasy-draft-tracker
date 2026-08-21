@@ -486,6 +486,11 @@ renderPosTab();
 
 // ---------- persistence (localStorage — works in any browser, incl. GitHub Pages) ----------
 const STORAGE_KEY = "ff-2026-draft-state";
+// Bump this whenever the baked-in point values change — it forces every visitor's browser
+// to drop its cached point numbers on next load and take the fresh ones from this file,
+// without anyone needing to clear storage manually. Picks/teams/nicknames are unaffected.
+const POINTS_VERSION = 2;
+const POINTS_VERSION_KEY = "ff-2026-points-version";
 function setStatus(msg){
   const el = document.getElementById('saveStatus');
   el.textContent = msg;
@@ -499,6 +504,7 @@ function saveState(){
       pts: players.map(p=>({name:p.name, pts:p.pts})),
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(POINTS_VERSION_KEY, String(POINTS_VERSION));
     setStatus("Saved");
   }catch(e){ setStatus("Save failed (browser storage may be disabled)"); }
 }
@@ -511,10 +517,18 @@ function loadState(){
       const t = teams.find(tt=>tt.id===st.id);
       if(t){ t.name = st.name; t.nickname = st.nickname||""; }
     });
-    state.pts.forEach(pp=>{
-      const p = players.find(pl=>pl.name===pp.name);
-      if(p) p.pts = pp.pts;
-    });
+
+    // only trust saved point values if they were saved under the current points version.
+    // otherwise, silently keep the fresh baked-in numbers from this file instead.
+    const savedVersion = localStorage.getItem(POINTS_VERSION_KEY);
+    if(savedVersion && parseInt(savedVersion) === POINTS_VERSION){
+      state.pts.forEach(pp=>{
+        const p = players.find(pl=>pl.name===pp.name);
+        if(p) p.pts = pp.pts;
+      });
+    }
+    localStorage.setItem(POINTS_VERSION_KEY, String(POINTS_VERSION));
+
     teams.forEach(t=>t.picks=[]);
     state.owners.forEach(o=>{
       const p = players.find(pl=>pl.name===o.name);
