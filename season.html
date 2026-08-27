@@ -21,9 +21,7 @@
   thead th{text-align:left;color:var(--sub);font-weight:500;padding:6px;border-bottom:1px solid var(--line);}
   tbody td{padding:6px;border-bottom:1px solid #223429;}
   tbody tr:hover{background:var(--panel2);}
-  input[type=number],input[type=text],select{
-    background:var(--panel2);border:1px solid var(--line);color:var(--text);
-    border-radius:6px;padding:6px 8px;font-size:13px;}
+  input[type=text],select{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:6px 8px;font-size:13px;}
   button{background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 12px;font-size:13px;cursor:pointer;font-weight:600;}
   button:hover{background:#3d8763;}
   .controls{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;}
@@ -38,20 +36,38 @@
   .QB{background:#4a2f6b;color:#dcc8ff;} .RB{background:#1d5c3f;color:#b8f0d4;}
   .WR{background:#1d4a6b;color:#bfe0ff;} .TE{background:#7a4a12;color:#ffd9a0;}
   .DST{background:#5c1f1f;color:#ffc4c4;} .K{background:#3d3d1a;color:#eef0b8;}
+  .tradebadge{background:#4a2f6b;color:#dcc8ff;} .waiverbadge{background:#1d5c3f;color:#b8f0d4;} .fabadge{background:#1d4a6b;color:#bfe0ff;}
+  .txnbadge{font-size:10px;padding:2px 7px;border-radius:10px;font-weight:700;text-transform:uppercase;}
+  .scroll{max-height:420px;overflow-y:auto;}
+  .statusline{font-size:12px;color:var(--sub);}
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>2026 Season Tracker</h1>
-  <div class="sub">Standings, weekly scores, and each team's configured starting lineup &middot; shares data with the draft tracker automatically</div>
-  <div style="margin-bottom:16px;"><a href="index.html">&larr; Back to Draft Tracker</a></div>
+  <div class="sub">Standings, waiver wire, and trade history &mdash; pulled live from Sleeper &middot; starting lineups shared with the draft tracker</div>
+  <div style="margin-bottom:10px;"><a href="index.html">&larr; Back to Draft Tracker</a></div>
+
+  <div class="controls">
+    <button id="syncBtn">Sync from Sleeper</button>
+    <span class="statusline" id="syncStatus"></span>
+  </div>
 
   <div id="content"></div>
 </div>
 
 <script>
-const STORAGE_KEY = "ff-2026-draft-state";
-const WEEKS_KEY = "ff-2026-season-weeks";
+const DRAFT_STORAGE_KEY = "ff-2026-draft-state";
+const SLEEPER_DRAFT_ID_KEY = "ff-2026-sleeper-draft-id";
+const DEFAULT_SLEEPER_DRAFT_ID = "1378473537542565888";
+const SEASON_CACHE_KEY = "ff-2026-season-cache";
+const PLAYERS_CACHE_KEY = "ff-2026-sleeper-players-cache";
+const PLAYERS_CACHE_TS_KEY = "ff-2026-sleeper-players-cache-ts";
+
+function getDraftId(){
+  return localStorage.getItem(SLEEPER_DRAFT_ID_KEY) || DEFAULT_SLEEPER_DRAFT_ID;
+}
+
 const LINEUP_SLOTS = [
   {key:"qbId",   label:"QB",   positions:["QB"]},
   {key:"rb1Id",  label:"RB",   positions:["RB"]},
@@ -64,12 +80,11 @@ const LINEUP_SLOTS = [
   {key:"dstId",  label:"DST",  positions:["DST"]},
 ];
 
-function loadDraftData(){
+function loadDraftSharedData(){
   try{
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
     if(!raw) return null;
     const state = JSON.parse(raw);
-    // reconstruct a lightweight player list from the saved snapshot (name/pos/team/pts)
     const players = (state.pts||[]).map(p=>({name:p.name, pos:p.pos, team:p.team, pts:p.pts, ownerId:null}));
     const byName = {};
     players.forEach(p=>byName[p.name]=p);
@@ -81,86 +96,267 @@ function loadDraftData(){
 
 function computeLineup(team, players){
   const roster = players.filter(p=>p.ownerId===team.id);
-  const usedNames = new Set();
-  const slots = LINEUP_SLOTS.map(def=>{
-    const pool = roster.filter(p=>def.positions.includes(p.pos) && !usedNames.has(p.name)).sort((a,b)=>b.pts-a.pts);
-    let chosen = null;
-    if(team[def.key]) chosen = pool.find(p=>p.name===team[def.key]) || null;
-    if(!chosen) chosen = pool[0] || null;
-    if(chosen) usedNames.add(chosen.name);
-    return {...def, player:chosen};
+  const claimedNames = new Set();
+  const claims = new Array(LINEUP_SLOTS.length).fill(null);
+  LINEUP_SLOTS.forEach((def,i)=>{
+    const chosenName = team[def.key];
+    if(!chosenName || claimedNames.has(chosenName)) return;
+    const candidate = roster.find(p=>p.name===chosenName && def.positions.includes(p.pos));
+    if(candidate){ claims[i] = candidate; claimedNames.add(candidate.name); }
   });
-  const bench = roster.filter(p=>!usedNames.has(p.name));
+  LINEUP_SLOTS.forEach((def,i)=>{
+    if(claims[i]) return;
+    const best = roster.filter(p=>def.positions.includes(p.pos) && !claimedNames.has(p.name))
+                        .sort((a,b)=>b.pts-a.pts)[0];
+    if(best){ claims[i] = best; claimedNames.add(best.name); }
+  });
+  const slots = LINEUP_SLOTS.map((def,i)=>({...def, player:claims[i]}));
+  const bench = roster.filter(p=>!claimedNames.has(p.name));
   const starterTotal = slots.reduce((s,slot)=>s+(slot.player?slot.player.pts:0),0);
   return {slots, bench, starterTotal};
 }
 
-function loadWeeks(){
-  try{ return JSON.parse(localStorage.getItem(WEEKS_KEY)) || {}; }catch(e){ return {}; }
-}
-function saveWeeks(weeks){
-  try{ localStorage.setItem(WEEKS_KEY, JSON.stringify(weeks)); }catch(e){}
+async function fetchAllSleeperPlayers(){
+  const cachedTs = localStorage.getItem(PLAYERS_CACHE_TS_KEY);
+  if(cachedTs && (Date.now() - parseInt(cachedTs)) < 20*60*60*1000){
+    try{ return JSON.parse(localStorage.getItem(PLAYERS_CACHE_KEY)); }catch(e){}
+  }
+  const res = await fetch("https://api.sleeper.app/v1/players/nfl");
+  if(!res.ok) throw new Error("players fetch failed");
+  const data = await res.json();
+  try{
+    localStorage.setItem(PLAYERS_CACHE_KEY, JSON.stringify(data));
+    localStorage.setItem(PLAYERS_CACHE_TS_KEY, String(Date.now()));
+  }catch(e){}
+  return data;
 }
 
-let currentWeek = 1;
+function loadSeasonCache(){
+  try{ return JSON.parse(localStorage.getItem(SEASON_CACHE_KEY)); }catch(e){ return null; }
+}
+function saveSeasonCache(data){
+  try{ localStorage.setItem(SEASON_CACHE_KEY, JSON.stringify(data)); }catch(e){}
+}
 
-function computeStandings(teams, weeks){
-  return teams.map(t=>{
-    let w=0,l=0,tt=0,pf=0;
-    Object.values(weeks).forEach(weekData=>{
-      const entry = weekData[t.id];
-      if(!entry) return;
-      pf += Number(entry.points)||0;
-      if(entry.result==="W") w++;
-      else if(entry.result==="L") l++;
-      else if(entry.result==="T") tt++;
+async function syncSeason(){
+  const btn = document.getElementById('syncBtn');
+  const statusEl = document.getElementById('syncStatus');
+  btn.disabled = true;
+  statusEl.textContent = "Fetching league info...";
+  try{
+    const draftId = getDraftId();
+    const draftRes = await fetch(`https://api.sleeper.app/v1/draft/${draftId}`);
+    if(!draftRes.ok) throw new Error("Could not load draft/league info");
+    const draftInfo = await draftRes.json();
+    const leagueId = draftInfo.league_id;
+    const slotToRoster = draftInfo.slot_to_roster_id || {};
+    if(!leagueId) throw new Error("No league_id found for this draft");
+
+    // roster_id -> team id (1-10), matching how the draft tracker assigns team identity by draft slot
+    const teamIdByRosterId = {};
+    Object.entries(slotToRoster).forEach(([slot, rosterId])=>{ teamIdByRosterId[rosterId] = parseInt(slot); });
+
+    statusEl.textContent = "Loading rosters & users...";
+    const [rostersRes, usersRes, stateRes] = await Promise.all([
+      fetch(`https://api.sleeper.app/v1/league/${leagueId}/rosters`),
+      fetch(`https://api.sleeper.app/v1/league/${leagueId}/users`),
+      fetch(`https://api.sleeper.app/v1/state/nfl`),
+    ]);
+    const rosters = rostersRes.ok ? await rostersRes.json() : [];
+    const users = usersRes.ok ? await usersRes.json() : [];
+    const nflState = stateRes.ok ? await stateRes.json() : {week:1};
+    const currentWeek = Math.max(1, nflState.week || 1);
+
+    const ownerIdToName = {};
+    users.forEach(u=>{ ownerIdToName[u.user_id] = (u.metadata && u.metadata.team_name) || u.display_name; });
+
+    const rosterMeta = {}; // roster_id -> {teamId, name, playerIds[]}
+    rosters.forEach(r=>{
+      const teamId = teamIdByRosterId[r.roster_id];
+      rosterMeta[r.roster_id] = {
+        teamId,
+        name: ownerIdToName[r.owner_id] || ("Roster "+r.roster_id),
+        playerIds: r.players || [],
+      };
     });
-    return {team:t, w, l, t:tt, pf};
-  }).sort((a,b)=> b.w-a.w || b.pf-a.pf);
+
+    statusEl.textContent = "Loading player database...";
+    const allPlayers = await fetchAllSleeperPlayers();
+    const nameOf = pid => {
+      const p = allPlayers[pid];
+      if(!p) return pid; // fall back to raw id if unknown (e.g. free agent DST codes)
+      return p.full_name || (p.first_name && p.last_name ? p.first_name+" "+p.last_name : pid);
+    };
+
+    statusEl.textContent = `Loading weekly scores (weeks 1-${currentWeek})...`;
+    const standings = {}; // teamId -> {w,l,t,pf}
+    Object.values(rosterMeta).forEach(rm=>{ if(rm.teamId) standings[rm.teamId] = {w:0,l:0,t:0,pf:0,name:rm.name}; });
+
+    for(let week=1; week<=currentWeek; week++){
+      const mRes = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/matchups/${week}`);
+      if(!mRes.ok) continue;
+      const matchups = await mRes.json();
+      const byMatchupId = {};
+      matchups.forEach(m=>{
+        if(m.matchup_id==null) return;
+        (byMatchupId[m.matchup_id] = byMatchupId[m.matchup_id]||[]).push(m);
+      });
+      Object.values(byMatchupId).forEach(pair=>{
+        pair.forEach(m=>{
+          const rm = rosterMeta[m.roster_id];
+          if(!rm || !rm.teamId || !standings[rm.teamId]) return;
+          standings[rm.teamId].pf += m.points || 0;
+        });
+        if(pair.length===2 && (pair[0].points||0) !== undefined && week < currentWeek){
+          // only score W/L for completed weeks (not the in-progress current week)
+          const [a,b] = pair;
+          const rmA = rosterMeta[a.roster_id], rmB = rosterMeta[b.roster_id];
+          if(rmA && rmA.teamId && standings[rmA.teamId] && rmB && rmB.teamId && standings[rmB.teamId]){
+            if((a.points||0) > (b.points||0)){ standings[rmA.teamId].w++; standings[rmB.teamId].l++; }
+            else if((a.points||0) < (b.points||0)){ standings[rmB.teamId].w++; standings[rmA.teamId].l++; }
+            else { standings[rmA.teamId].t++; standings[rmB.teamId].t++; }
+          }
+        }
+      });
+    }
+
+    statusEl.textContent = "Loading transactions (trades & waivers)...";
+    let allTxns = [];
+    for(let week=1; week<=currentWeek; week++){
+      const tRes = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/transactions/${week}`);
+      if(!tRes.ok) continue;
+      const txns = await tRes.json();
+      txns.forEach(t=>t._week = week);
+      allTxns = allTxns.concat(txns);
+    }
+    allTxns.sort((a,b)=> (b.status_updated||0) - (a.status_updated||0));
+
+    // waiver wire = every player in Sleeper's DB not currently on any roster
+    const rosteredIds = new Set();
+    rosters.forEach(r=>(r.players||[]).forEach(pid=>rosteredIds.add(pid)));
+    const availablePlayers = Object.values(allPlayers)
+      .filter(p=>p && p.player_id && !rosteredIds.has(p.player_id) && p.position && ["QB","RB","WR","TE","K","DEF"].includes(p.position) && p.team)
+      .map(p=>({id:p.player_id, name:p.full_name || (p.first_name+" "+p.last_name), pos:p.position, team:p.team, rank:p.search_rank||9999}))
+      .sort((a,b)=>a.rank-b.rank)
+      .slice(0, 300); // cap the list to a manageable size, sorted by relevance
+
+    const seasonData = {
+      currentWeek,
+      standings: Object.entries(standings).map(([teamId,s])=>({teamId:parseInt(teamId), ...s})),
+      transactions: allTxns.slice(0, 100).map(t=>({
+        type: t.type, week: t._week, status_updated: t.status_updated,
+        rosterNames: (t.roster_ids||[]).map(rid=>(rosterMeta[rid]&&rosterMeta[rid].name)||("Roster "+rid)),
+        adds: t.adds ? Object.entries(t.adds).map(([pid,rid])=>({player:nameOf(pid), team:(rosterMeta[rid]&&rosterMeta[rid].name)||("Roster "+rid)})) : [],
+        drops: t.drops ? Object.entries(t.drops).map(([pid,rid])=>({player:nameOf(pid), team:(rosterMeta[rid]&&rosterMeta[rid].name)||("Roster "+rid)})) : [],
+      })),
+      availablePlayers,
+      syncedAt: Date.now(),
+    };
+    saveSeasonCache(seasonData);
+    statusEl.textContent = `Synced through week ${currentWeek}`;
+    render();
+  }catch(e){
+    statusEl.textContent = "Sync failed: " + e.message;
+    console.error(e);
+  }finally{
+    btn.disabled = false;
+    setTimeout(()=>{ if(statusEl.textContent.startsWith("Synced")) statusEl.textContent=""; }, 4000);
+  }
+}
+
+function txnBadgeClass(type){
+  if(type==="trade") return "tradebadge";
+  if(type==="waiver") return "waiverbadge";
+  return "fabadge";
 }
 
 function render(){
-  const data = loadDraftData();
+  const draftData = loadDraftSharedData();
+  const seasonData = loadSeasonCache();
   const el = document.getElementById('content');
 
-  if(!data || !data.teams.length || !data.players.length){
+  if(!draftData || !draftData.teams.length){
     el.innerHTML = `<div class="panel"><div class="empty-state">
       No draft data found yet in this browser.<br>
-      Open the <a href="index.html">Draft Tracker</a> first and sync/save your league, then come back here.
+      Open the <a href="index.html">Draft Tracker</a> first, sync it, then come back here.
     </div></div>`;
     return;
   }
 
-  const weeks = loadWeeks();
-  const standings = computeStandings(data.teams, weeks);
+  if(!seasonData){
+    el.innerHTML = `<div class="panel"><div class="empty-state">
+      Click <b>Sync from Sleeper</b> above to pull in standings, waiver wire, and trade history.
+    </div></div>`;
+  } else {
+    // match season standings (keyed by teamId 1-10) to the draft tracker's team names/nicknames
+    const teamById = {};
+    draftData.teams.forEach(t=>teamById[t.id]=t);
+    const standingsSorted = seasonData.standings
+      .map(s=>({...s, teamObj: teamById[s.teamId]}))
+      .filter(s=>s.teamObj)
+      .sort((a,b)=> b.w-a.w || b.pf-a.pf);
 
-  const standingsRows = standings.map((s,i)=>`
-    <tr>
-      <td>${i+1}</td>
-      <td>${s.team.name}${s.team.nickname ? ` <span style="color:var(--sub);font-style:italic;font-size:11px;">"${s.team.nickname}"</span>` : ""}</td>
-      <td>${s.w}-${s.l}${s.t?`-${s.t}`:""}</td>
-      <td>${s.pf.toFixed(1)}</td>
-    </tr>`).join("");
+    const standingsRows = standingsSorted.map((s,i)=>`
+      <tr>
+        <td>${i+1}</td>
+        <td>${s.teamObj.name}${s.teamObj.nickname?` <span style="color:var(--sub);font-style:italic;font-size:11px;">"${s.teamObj.nickname}"</span>`:""}</td>
+        <td>${s.w}-${s.l}${s.t?`-${s.t}`:""}</td>
+        <td>${s.pf.toFixed(1)}</td>
+      </tr>`).join("");
 
-  const weekData = weeks[currentWeek] || {};
-  const weekRows = data.teams.map(t=>{
-    const entry = weekData[t.id] || {points:"", result:""};
-    return `<tr>
-      <td>${t.name}</td>
-      <td><input type="number" step="0.1" class="weekPts" data-team="${t.id}" value="${entry.points}" style="width:80px;"></td>
-      <td>
-        <select class="weekResult" data-team="${t.id}">
-          <option value="" ${!entry.result?'selected':''}>-</option>
-          <option value="W" ${entry.result==='W'?'selected':''}>W</option>
-          <option value="L" ${entry.result==='L'?'selected':''}>L</option>
-          <option value="T" ${entry.result==='T'?'selected':''}>T</option>
-        </select>
-      </td>
-    </tr>`;
-  }).join("");
+    const txnRows = seasonData.transactions.map(t=>{
+      const moves = [
+        ...t.adds.map(a=>`<div>+ ${a.player} <span style="color:var(--sub)">&rarr; ${a.team}</span></div>`),
+        ...t.drops.map(d=>`<div style="color:var(--danger)">- ${d.player} <span style="color:var(--sub)">&larr; ${d.team}</span></div>`),
+      ].join("");
+      return `<tr>
+        <td><span class="txnbadge ${txnBadgeClass(t.type)}">${t.type}</span></td>
+        <td>Wk ${t.week}</td>
+        <td>${moves || '<span style="color:var(--sub)">-</span>'}</td>
+      </tr>`;
+    }).join("");
 
-  const rosterCards = data.teams.map(t=>{
-    const L = computeLineup(t, data.players);
+    const waiverRows = seasonData.availablePlayers.slice(0,60).map(p=>`
+      <tr>
+        <td><span class="postag ${p.pos}">${p.pos}</span></td>
+        <td>${p.name}</td>
+        <td>${p.team}</td>
+      </tr>`).join("");
+
+    el.innerHTML = `
+      <div class="panel">
+        <h2>Standings <span style="color:var(--sub);font-weight:400;font-size:11px;">(through week ${seasonData.currentWeek - 1 || 1})</span></h2>
+        <table>
+          <thead><tr><th>#</th><th>Team</th><th>Record</th><th>Points For</th></tr></thead>
+          <tbody>${standingsRows}</tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h2>Trade & Waiver History <span style="color:var(--sub);font-weight:400;font-size:11px;">(most recent first)</span></h2>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Type</th><th>Week</th><th>Moves</th></tr></thead>
+            <tbody>${txnRows || '<tr><td colspan="3" style="color:var(--sub);">No transactions yet</td></tr>'}</tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Waiver Wire <span style="color:var(--sub);font-weight:400;font-size:11px;">(top 60 available, by Sleeper rank)</span></h2>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Pos</th><th>Player</th><th>Team</th></tr></thead>
+            <tbody>${waiverRows}</tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  // Starting lineups panel (always shown from shared draft-tracker data, independent of season sync)
+  const rosterCards = draftData.teams.map(t=>{
+    const L = computeLineup(t, draftData.players);
     const rows = L.slots.map(slot=>`
       <div class="rline"><span class="rlabel">${slot.label}</span>
         <span>${slot.player ? `<span class="postag ${slot.player.pos}">${slot.player.pos}</span>${slot.player.name}` : '<span style="color:var(--sub);font-style:italic;">empty</span>'}</span>
@@ -174,58 +370,17 @@ function render(){
     </div>`;
   }).join("");
 
-  el.innerHTML = `
+  el.innerHTML += `
     <div class="panel">
-      <h2>Standings</h2>
-      <table>
-        <thead><tr><th>#</th><th>Team</th><th>Record</th><th>Points For</th></tr></thead>
-        <tbody>${standingsRows}</tbody>
-      </table>
-    </div>
-
-    <div class="panel">
-      <h2>Weekly Scores</h2>
-      <div class="controls">
-        <span>Week:</span>
-        <input type="number" id="weekSelector" min="1" max="18" value="${currentWeek}" style="width:70px;">
-        <button id="saveWeekBtn">Save Week</button>
-      </div>
-      <table>
-        <thead><tr><th>Team</th><th>Points Scored</th><th>Result</th></tr></thead>
-        <tbody>${weekRows}</tbody>
-      </table>
-    </div>
-
-    <div class="panel">
-      <h2>Starting Lineups (as configured in the Draft Tracker)</h2>
+      <h2>Starting Lineups <span style="color:var(--sub);font-weight:400;font-size:11px;">(as configured in the Draft Tracker)</span></h2>
       <div class="roster-grid">${rosterCards}</div>
     </div>
   `;
-
-  document.getElementById('weekSelector').onchange = (e)=>{
-    currentWeek = parseInt(e.target.value) || 1;
-    render();
-  };
-  document.getElementById('saveWeekBtn').onclick = ()=>{
-    const weeks = loadWeeks();
-    const weekEntry = {};
-    document.querySelectorAll('.weekPts').forEach(inp=>{
-      const teamId = parseInt(inp.dataset.team);
-      weekEntry[teamId] = weekEntry[teamId] || {};
-      weekEntry[teamId].points = inp.value;
-    });
-    document.querySelectorAll('.weekResult').forEach(sel=>{
-      const teamId = parseInt(sel.dataset.team);
-      weekEntry[teamId] = weekEntry[teamId] || {};
-      weekEntry[teamId].result = sel.value;
-    });
-    weeks[currentWeek] = weekEntry;
-    saveWeeks(weeks);
-    render();
-  };
 }
 
+document.getElementById('syncBtn').onclick = syncSeason;
 render();
+syncSeason();
 </script>
 </body>
 </html>
