@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>2026 Fantasy Draft Tracker</title>
+<title>Draft</title>
 <style>
   :root{
     --bg:#0f1e17; --panel:#16281f; --panel2:#1c3226; --line:#2c4436;
@@ -75,16 +75,22 @@
   .bestcard h3{margin:0 0 6px;font-size:11px;color:var(--sub);}
   .bestcard .p{font-size:12.5px;padding:3px 0;border-bottom:1px solid #223429;}
   .bestcard .p:last-child{border-bottom:none;}
+  .pagenav{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;}
+  .navpill{background:var(--panel2);border:1px solid var(--line);color:var(--text);
+    text-decoration:none;padding:6px 16px;border-radius:20px;font-size:12px;font-weight:600;
+    transition:border-color .15s,background .15s;}
+  .navpill:hover{border-color:var(--gold-dim);}
+  .navpill.active{background:var(--gold);color:#1a1a1a;border-color:var(--gold);cursor:default;pointer-events:none;}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>2026 Fantasy Draft Tracker</h1>
+  <h1>Draft Tracker</h1>
   <div class="sub">10-team snake draft &middot; auto-tracks ADP and projected points per team &middot; saves locally in this browser</div>
-  <div style="margin:-4px 0 14px;display:flex;gap:14px;font-size:13px;">
-    <a href="index.html" style="color:var(--gold);text-decoration:none;">&#8962; Home</a>
-    <span style="color:var(--sub);">&middot;</span>
-    <a href="season.html" style="color:var(--gold);text-decoration:none;">Season Tracker &rarr;</a>
+  <div class="pagenav">
+    <a href="index.html" class="navpill">Home</a>
+    <a href="draft.html" class="navpill active">Draft</a>
+    <a href="season.html" class="navpill">Season</a>
   </div>
 
   <div class="clock" id="clock"></div>
