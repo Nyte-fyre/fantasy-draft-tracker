@@ -46,6 +46,16 @@
   .draftbtn:hover{background:#3d8763;}
   .taken-row{opacity:.35;}
   .teamcard{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:10px;}
+  .startercard{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;}
+  .startercard h4{margin:0 0 8px;font-size:13px;color:var(--gold);}
+  .slotrow{display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:4px 0;border-bottom:1px solid #223429;gap:6px;}
+  .slotrow:last-of-type{border-bottom:none;}
+  .slotlabel{color:var(--sub);width:36px;flex-shrink:0;font-weight:600;}
+  .slotname{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .slotpts{color:var(--sub);flex-shrink:0;}
+  .slotempty{color:var(--sub);font-style:italic;}
+  .flexSelect{background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:5px;padding:2px 4px;font-size:11px;flex:1;min-width:0;}
+  .starter-totals{display:flex;justify-content:space-between;margin-top:10px;padding-top:8px;border-top:1px solid var(--line);font-size:12px;}
   .teamcard.me{border-color:var(--gold);background:#22381f;}
   .teamhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:8px;flex-wrap:wrap;}
   .teamhead input{background:transparent;border:none;border-bottom:1px solid transparent;color:var(--text);font-weight:600;font-size:14px;padding:2px 0;flex:1;min-width:80px;}
@@ -71,7 +81,13 @@
   <div class="sub">10-team snake draft &middot; auto-tracks ADP and projected points per team &middot; saves locally in this browser</div>
 
   <div class="clock" id="clock"></div>
-  <div id="viewerBar" style="display:flex;gap:8px;align-items:center;margin:-8px 0 8px;font-size:12px;color:var(--sub);flex-wrap:wrap;">
+  <div id="leagueBar" style="display:flex;gap:8px;align-items:center;margin:-8px 0 8px;font-size:12px;color:var(--sub);flex-wrap:wrap;">
+    <span>League:</span>
+    <input type="text" id="leagueInput" placeholder="Paste a Sleeper draft link or ID..." style="background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:5px 8px;font-size:12px;flex:1;min-width:180px;">
+    <button id="loadLeagueBtn" style="background:var(--panel2);border:1px solid var(--gold-dim);color:var(--gold);font-weight:600;">Load League</button>
+    <span id="leagueStatus"></span>
+  </div>
+  <div id="viewerBar" style="display:flex;gap:8px;align-items:center;margin:-4px 0 8px;font-size:12px;color:var(--sub);flex-wrap:wrap;">
     <span>Viewing as:</span>
     <select id="viewerSelect"></select>
   </div>
@@ -114,6 +130,12 @@
       <h2>Teams</h2>
       <div id="teams"></div>
     </div>
+  </div>
+
+  <div class="panel" style="margin-top:18px;">
+    <h2>Starting Lineups</h2>
+    <div class="legend" style="margin-bottom:12px;">Auto-filled by best available player at each slot (QB, 2 RB, 2 WR, TE, K, DST). Pick your own FLEX from what's left over — everyone else on the roster counts as bench.</div>
+    <div id="starters" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;"></div>
   </div>
 </div>
 
@@ -277,36 +299,20 @@ players = players.filter(p=>{
 });
 
 // ---------- Teams ----------
-const TEAM_NAMES = ["Jamie","J.A. Rules","Chris M.","Emily G.","Dennis F.","Atherv G.","Tanay G.","Yuval S.","Leron R. / Angie","Ellie G."];
+// Generic placeholders — these get overwritten automatically by real names on the first
+// "Sync from Sleeper," so nothing league-specific needs to be hardcoded here anymore.
+const TEAM_NAMES = ["Team 1","Team 2","Team 3","Team 4","Team 5","Team 6","Team 7","Team 8","Team 9","Team 10"];
 const N_TEAMS = TEAM_NAMES.length;
 const VIEWER_KEY = "ff-2026-viewer-team";
 let MY_TEAM_ID = null; // set per-browser via the "Viewing as" selector, not shared
 let teams = [];
 for(let i=1;i<=N_TEAMS;i++){
-  teams.push({id:i, name: TEAM_NAMES[i-1], picks:[]});
+  teams.push({id:i, name: TEAM_NAMES[i-1], picks:[], flexId:null});
 }
 
-// preload the league's actual draft results so far (by team id, matching TEAM_NAMES order)
-const DRAFT_STATE = {
-  1: ["Bijan Robinson","Drake London","Cam Skattebo","DeVonta Smith","D'Andre Swift","Drake Maye","Harold Fannin","Brandon Aubrey","Los Angeles Rams D/ST"],
-  2: ["Jahmyr Gibbs","Nico Collins","Travis Etienne Jr.","Josh Allen","Tetairoa McMillan","Mike Evans","Carnell Tate","Rhamondre Stevenson","Kyle Pitts"],
-  3: ["Puka Nacua","Kenneth Walker III","Omarion Hampton","Colston Loveland","Zay Flowers","Jameson Williams","Rico Dowdle","DK Metcalf","Matthew Stafford"],
-  4: ["Ja'Marr Chase","Saquon Barkley","Derrick Henry","Ladd McConkey","Emeka Egbuka","Bhayshul Tuten","Christian Watson","Sam LaPorta","Jaxson Dart"],
-  5: ["Amon-Ra St. Brown","Ashton Jeanty","Rashee Rice","Breece Hall","Bucky Irving","Jayden Daniels","Luther Burden III","Michael Wilson","Dalton Kincaid"],
-  6: ["Christian McCaffrey","A.J. Brown","Trey McBride","Javonte Williams","Garrett Wilson","Joe Burrow","D.J. Moore","Jake Ferguson","Kyle Monangai"],
-  7: ["Jaxon Smith-Njigba","Brock Bowers","Chase Brown","Josh Jacobs","Jaylen Waddle","Davante Adams","Jadarian Price","Dak Prescott","RJ Harvey"],
-  8: ["Justin Jefferson","De'Von Achane","Malik Nabers","Lamar Jackson","Quinshon Judkins","Tyler Warren","Rome Odunze","Jaylen Warren"],
-  9: ["Jonathan Taylor","CeeDee Lamb","Kyren Williams","Chris Olave","TreVeyon Henderson","Terry McLaurin","Tucker Kraft","Caleb Williams"],
-  10: ["James Cook","George Pickens","Jeremiyah Love","Tee Higgins","David Montgomery","Jalen Hurts","Brian Thomas Jr.","Travis Kelce"],
-};
-Object.entries(DRAFT_STATE).forEach(([teamId, names])=>{
-  const id = parseInt(teamId);
-  names.forEach(n=>{
-    const p = players.find(pl=>pl.name===n);
-    if(p){ p.ownerId = id; teams.find(t=>t.id===id).picks.push(p.name); }
-    else { console.warn("Player not found in pool:", n); }
-  });
-});
+// No picks are baked into the file anymore — teams start empty and get populated
+// live by "Sync from Sleeper" (which also runs automatically on page load). This
+// keeps the file itself simple and means it never goes stale between updates.
 
 // ---------- snake order / clock ----------
 function totalDrafted(){ return players.filter(p=>p.ownerId!==null).length; }
@@ -471,12 +477,94 @@ function renderTeams(){
   });
 }
 
+// ---------- starting lineups (auto-filled starters, user-chosen FLEX, bench separated out) ----------
+function computeLineup(team){
+  const roster = players.filter(p=>p.ownerId===team.id);
+  const byPos = pos => roster.filter(p=>p.pos===pos).sort((a,b)=>b.pts-a.pts);
+
+  const qb = byPos("QB")[0] || null;
+  const rbs = byPos("RB");
+  const wrs = byPos("WR");
+  const tes = byPos("TE");
+  const k = byPos("K")[0] || null;
+  const dst = byPos("DST")[0] || null;
+
+  const rb1 = rbs[0] || null, rb2 = rbs[1] || null;
+  const wr1 = wrs[0] || null, wr2 = wrs[1] || null;
+  const te1 = tes[0] || null;
+
+  const usedNames = new Set([qb,rb1,rb2,wr1,wr2,te1,k,dst].filter(Boolean).map(p=>p.name));
+
+  // FLEX eligible pool = any RB/WR/TE not already starting
+  const flexPool = roster.filter(p=>(p.pos==="RB"||p.pos==="WR"||p.pos==="TE") && !usedNames.has(p.name))
+                          .sort((a,b)=>b.pts-a.pts);
+
+  let flex = null;
+  if(team.flexId){
+    flex = flexPool.find(p=>p.name===team.flexId) || null;
+  }
+  if(!flex) flex = flexPool[0] || null; // default to best available if nothing chosen or choice no longer valid
+  if(flex) usedNames.add(flex.name);
+
+  const bench = roster.filter(p=>!usedNames.has(p.name));
+  const starters = [qb,rb1,rb2,wr1,wr2,te1,flex,k,dst];
+  const starterTotal = starters.reduce((s,p)=>s+(p?p.pts:0),0);
+  const benchTotal = bench.reduce((s,p)=>s+p.pts,0);
+
+  return {qb,rb1,rb2,wr1,wr2,te1,flex,k,dst,flexPool,bench,starterTotal,benchTotal};
+}
+
+function slotRow(label, player){
+  if(!player) return `<div class="slotrow"><span class="slotlabel">${label}</span><span class="slotempty">empty</span></div>`;
+  return `<div class="slotrow"><span class="slotlabel">${label}</span><span class="slotname">${player.name}</span><span class="slotpts">${player.pts}</span></div>`;
+}
+
+function renderStarters(){
+  const el = document.getElementById('starters');
+  el.innerHTML = teams.map(t=>{
+    const L = computeLineup(t);
+    const flexOptions = L.flexPool.length
+      ? L.flexPool.map(p=>`<option value="${p.name.replace(/"/g,'&quot;')}" ${L.flex && L.flex.name===p.name ? 'selected':''}>${p.name} (${p.pos}, ${p.pts})</option>`).join("")
+      : `<option value="">no eligible bench players</option>`;
+    return `<div class="startercard">
+      <h4>${t.name}${t.id===MY_TEAM_ID?' <span style="color:var(--gold);font-size:10px;">(you)</span>':''}</h4>
+      ${slotRow("QB", L.qb)}
+      ${slotRow("RB", L.rb1)}
+      ${slotRow("RB", L.rb2)}
+      ${slotRow("WR", L.wr1)}
+      ${slotRow("WR", L.wr2)}
+      ${slotRow("TE", L.te1)}
+      <div class="slotrow">
+        <span class="slotlabel">FLEX</span>
+        <select class="flexSelect" data-team="${t.id}">${flexOptions}</select>
+        <span class="slotpts">${L.flex ? L.flex.pts : "-"}</span>
+      </div>
+      ${slotRow("K", L.k)}
+      ${slotRow("DST", L.dst)}
+      <div class="starter-totals">
+        <span>Starters: <b style="color:var(--gold)">${Math.round(L.starterTotal)}</b></span>
+        <span>Bench: <b>${Math.round(L.benchTotal)}</b> <span style="color:var(--sub)">(${L.bench.length})</span></span>
+      </div>
+    </div>`;
+  }).join("");
+
+  el.querySelectorAll('.flexSelect').forEach(sel=>{
+    sel.onchange = ()=>{
+      const t = teams.find(tt=>tt.id===parseInt(sel.dataset.team));
+      t.flexId = sel.value || null;
+      renderStarters();
+      saveState();
+    };
+  });
+}
+
 function renderAll(){
   renderClock();
   renderBestAvail();
   renderPool();
   renderTeams();
   renderViewerSelect();
+  renderStarters();
 }
 
 document.getElementById('search').oninput = renderPool;
@@ -499,7 +587,7 @@ function setStatus(msg){
 function saveState(){
   try{
     const state = {
-      teams: teams.map(t=>({id:t.id, name:t.name, nickname:t.nickname||""})),
+      teams: teams.map(t=>({id:t.id, name:t.name, nickname:t.nickname||"", flexId:t.flexId||null})),
       owners: players.filter(p=>p.ownerId!==null).map(p=>({name:p.name, ownerId:p.ownerId})),
       pts: players.map(p=>({name:p.name, pts:p.pts})),
     };
@@ -515,7 +603,7 @@ function loadState(){
     const state = JSON.parse(raw);
     state.teams.forEach(st=>{
       const t = teams.find(tt=>tt.id===st.id);
-      if(t){ t.name = st.name; t.nickname = st.nickname||""; }
+      if(t){ t.name = st.name; t.nickname = st.nickname||""; t.flexId = st.flexId||null; }
     });
 
     // only trust saved point values if they were saved under the current points version.
@@ -562,13 +650,25 @@ document.getElementById('saveBtn').onclick = saveState;
 initViewerSelect();
 
 // ---------- Sleeper live sync ----------
-const SLEEPER_DRAFT_ID = "1378473537542565888";
+const DEFAULT_SLEEPER_DRAFT_ID = "1378473537542565888";
+const SLEEPER_DRAFT_ID_KEY = "ff-2026-sleeper-draft-id";
+let SLEEPER_DRAFT_ID = localStorage.getItem(SLEEPER_DRAFT_ID_KEY) || DEFAULT_SLEEPER_DRAFT_ID;
 function normName(s){
   return (s||"").toLowerCase()
     .replace(/[.'']/g,"")
     .replace(/\b(jr|sr|ii|iii|iv|v)\b/g,"")
     .replace(/\s+/g," ")
     .trim();
+}
+// Last name only — used as a fallback match when full names don't line up exactly
+// (e.g. "Kenny Gainwell" vs "Kenneth Gainwell"). Nickname/full-name mismatches between
+// data sources are common and impossible to fully list in advance, so rather than
+// maintaining a nickname dictionary, we fall back to last name + position + team,
+// which resolves the same class of problem generally.
+function lastNameKeyOf(fullName, pos, team){
+  const parts = normName(fullName).split(" ");
+  const last = parts[parts.length-1] || "";
+  return last + "|" + (pos||"") + "|" + (team||"").toUpperCase();
 }
 function setSleeperStatus(msg){
   const el = document.getElementById('sleeperStatus');
@@ -619,9 +719,20 @@ async function syncFromSleeper(){
     const picks = await res.json();
     if(!Array.isArray(picks)) throw new Error("Unexpected response");
 
-    // build a normalized-name lookup for skill positions
+    // build a normalized-name lookup for skill positions, plus a last-name+pos+team
+    // fallback for nickname/full-name mismatches (e.g. Sleeper says "Kenny Gainwell",
+    // our pool says "Kenneth Gainwell" — last name + position + team still lines up).
     const byName = {};
-    players.forEach(p=>{ if(p.pos!=="DST") byName[normName(p.name)] = p; });
+    const byLastKey = {};
+    const lastKeySeenPool = {};
+    players.forEach(p=>{
+      if(p.pos==="DST") return;
+      byName[normName(p.name)] = p;
+      const lk = lastNameKeyOf(p.name, p.pos, p.team);
+      lastKeySeenPool[lk] = (lastKeySeenPool[lk]||0) + 1;
+      if(lastKeySeenPool[lk] === 1) byLastKey[lk] = p;
+      else delete byLastKey[lk]; // ambiguous within our own pool — don't guess
+    });
 
     let matched=0, unmatched=[];
     picks.forEach(pick=>{
@@ -637,6 +748,10 @@ async function syncFromSleeper(){
       } else {
         const full = normName(`${pick.metadata.first_name||""} ${pick.metadata.last_name||""}`);
         player = byName[full];
+        if(!player){
+          const lk = lastNameKeyOf(`${pick.metadata.first_name||""} ${pick.metadata.last_name||""}`, pick.metadata.position, pick.metadata.team);
+          player = byLastKey[lk] || null;
+        }
       }
 
       if(player){
@@ -688,20 +803,40 @@ async function syncFromSleeper(){
         // silently overwriting the real player's rank with an irrelevant one.
         const rankByKey = {};
         const idByKey = {};
+        // fallback index: last name + position + team -> rank/id, but only kept when
+        // exactly one Sleeper player matches that combo (ambiguous ones are dropped
+        // rather than risk a wrong match).
+        const rankByLastKey = {};
+        const idByLastKey = {};
+        const lastKeySeen = {};
         Object.values(allPlayers).forEach(sp=>{
           if(!sp || !sp.full_name || !sp.position) return;
           if(!sp.search_rank || sp.search_rank <= 0 || sp.search_rank >= 9999) return; // unranked/irrelevant
           const key = normName(sp.full_name) + "|" + sp.position;
-          // if we already have an entry for this exact name+position, keep whichever is more relevant (lower rank)
           if(!(key in rankByKey) || sp.search_rank < rankByKey[key]){
             rankByKey[key] = sp.search_rank;
             idByKey[key] = sp.player_id;
+          }
+          const lastKey = lastNameKeyOf(sp.full_name, sp.position, sp.team);
+          lastKeySeen[lastKey] = (lastKeySeen[lastKey]||0) + 1;
+          if(lastKeySeen[lastKey] === 1){
+            rankByLastKey[lastKey] = sp.search_rank;
+            idByLastKey[lastKey] = sp.player_id;
+          } else {
+            delete rankByLastKey[lastKey]; // ambiguous — more than one match, don't guess
+            delete idByLastKey[lastKey];
           }
         });
         players.forEach(p=>{
           if(p.pos==="DST") return; // Sleeper ranks these separately/inconsistently, skip
           const key = normName(p.name) + "|" + p.pos;
-          const rank = rankByKey[key];
+          let rank = rankByKey[key];
+          if(!rank){
+            // fall back to last name + position + team for nickname/full-name mismatches
+            // (e.g. "Kenny Gainwell" in Sleeper's data vs "Kenneth Gainwell" in ours)
+            const lastKey = lastNameKeyOf(p.name, p.pos, p.team);
+            rank = rankByLastKey[lastKey];
+          }
           if(rank && p.adp !== rank){
             p.adp = rank;
             adpUpdated++;
@@ -729,6 +864,47 @@ async function syncFromSleeper(){
   }
 }
 document.getElementById('sleeperBtn').onclick = syncFromSleeper;
+
+// ---------- switch to a different league entirely ----------
+function extractDraftId(input){
+  const trimmed = (input||"").trim();
+  if(/^\d+$/.test(trimmed)) return trimmed; // raw numeric ID pasted directly
+  const match = trimmed.match(/draft\/nfl\/(\d+)/); // e.g. sleeper.app/draft/nfl/123456789
+  if(match) return match[1];
+  const anyDigits = trimmed.match(/(\d{10,})/); // fallback: longest digit run in whatever was pasted
+  return anyDigits ? anyDigits[1] : null;
+}
+async function loadLeague(){
+  const input = document.getElementById('leagueInput').value;
+  const statusEl = document.getElementById('leagueStatus');
+  const newId = extractDraftId(input);
+  if(!newId){
+    statusEl.textContent = "Couldn't find a draft ID in that — paste the link or just the numbers";
+    return;
+  }
+  if(newId === SLEEPER_DRAFT_ID){
+    statusEl.textContent = "That's already the loaded league";
+    return;
+  }
+
+  SLEEPER_DRAFT_ID = newId;
+  localStorage.setItem(SLEEPER_DRAFT_ID_KEY, newId);
+
+  // switching leagues means this browser's old picks/team names/flex choices no longer apply
+  players.forEach(p=>{ p.ownerId = null; });
+  teams.forEach((t,i)=>{ t.name = "Team "+(i+1); t.nickname = ""; t.picks = []; t.flexId = null; });
+  MY_TEAM_ID = null;
+  localStorage.removeItem(VIEWER_KEY);
+  localStorage.removeItem(STORAGE_KEY);
+
+  statusEl.textContent = "Loading new league...";
+  document.getElementById('leagueInput').value = "";
+  renderAll();
+  await syncFromSleeper();
+  statusEl.textContent = "Switched leagues";
+  setTimeout(()=>{ if(statusEl.textContent==="Switched leagues") statusEl.textContent=""; }, 3000);
+}
+document.getElementById('loadLeagueBtn').onclick = loadLeague;
 
 (function init(){
   const loaded = loadState();
