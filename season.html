@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>2026 Season Tracker</title>
+<title>Season</title>
 <style>
   :root{
     --bg:#0f1e17; --panel:#16281f; --panel2:#1c3226; --line:#2c4436;
@@ -40,16 +40,22 @@
   .txnbadge{font-size:10px;padding:2px 7px;border-radius:10px;font-weight:700;text-transform:uppercase;}
   .scroll{max-height:420px;overflow-y:auto;}
   .statusline{font-size:12px;color:var(--sub);}
+  .pagenav{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;}
+  .navpill{background:var(--panel2);border:1px solid var(--line);color:var(--text);
+    text-decoration:none;padding:6px 16px;border-radius:20px;font-size:12px;font-weight:600;
+    transition:border-color .15s,background .15s;}
+  .navpill:hover{border-color:var(--gold-dim);}
+  .navpill.active{background:var(--gold);color:#1a1a1a;border-color:var(--gold);cursor:default;pointer-events:none;}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>2026 Season Tracker</h1>
+  <h1>Season Tracker</h1>
   <div class="sub">Standings, waiver wire, and trade history &mdash; pulled live from Sleeper &middot; starting lineups shared with the draft tracker</div>
-  <div style="margin-bottom:10px;display:flex;gap:14px;font-size:13px;">
-    <a href="index.html" style="text-decoration:none;">&#8962; Home</a>
-    <span style="color:var(--sub);">&middot;</span>
-    <a href="draft.html" style="text-decoration:none;">&larr; Draft Tracker</a>
+  <div class="pagenav">
+    <a href="index.html" class="navpill">Home</a>
+    <a href="draft.html" class="navpill">Draft</a>
+    <a href="season.html" class="navpill active">Season</a>
   </div>
 
   <div class="controls">
