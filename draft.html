@@ -641,7 +641,14 @@ function loadState(){
     const savedVersion = localStorage.getItem(POINTS_VERSION_KEY);
     if(savedVersion && parseInt(savedVersion) === POINTS_VERSION){
       state.pts.forEach(pp=>{
-        const p = players.find(pl=>pl.name===pp.name);
+        let p = players.find(pl=>pl.name===pp.name);
+        if(!p && pp.pos && pp.team){
+          // this player was dynamically discovered during a previous sync (e.g. a kicker
+          // who just won a job battle) and isn't in the static pool rebuilt on page load.
+          // Re-add them from the saved snapshot instead of silently losing their pick/pts.
+          p = {adp: 999, name: pp.name, team: pp.team, pos: pp.pos, pts: pp.pts, ownerId: null};
+          players.push(p);
+        }
         if(p) p.pts = pp.pts;
       });
     }
@@ -743,7 +750,69 @@ async function syncFromSleeper(){
       }
     }catch(nameErr){ console.warn("Team name sync skipped:", nameErr); }
 
-    // 2) pull picks
+    // 2) pull Sleeper's full player database early (before pick-matching), so any player
+    // missing from our static pool — like a kicker who just won a job battle — gets added
+    // in time to actually be matched against real draft picks in this same sync, not just
+    // discovered too late to matter. Cached for 20h since it's a ~5MB file.
+    const CACHE_KEY = "ff-2026-sleeper-players-cache";
+    const CACHE_TS_KEY = "ff-2026-sleeper-players-cache-ts";
+    let allPlayers = null;
+    let playersAdded = 0, teamsUpdated = 0;
+    try{
+      const cachedTs = localStorage.getItem(CACHE_TS_KEY);
+      if(cachedTs && (Date.now() - parseInt(cachedTs)) < 20*60*60*1000){
+        try{ allPlayers = JSON.parse(localStorage.getItem(CACHE_KEY)); }catch(e){ allPlayers = null; }
+      }
+      if(!allPlayers){
+        const pRes = await fetch("https://api.sleeper.app/v1/players/nfl");
+        if(pRes.ok){
+          allPlayers = await pRes.json();
+          try{
+            localStorage.setItem(CACHE_KEY, JSON.stringify(allPlayers));
+            localStorage.setItem(CACHE_TS_KEY, String(Date.now()));
+          }catch(e){ /* storage quota, fine to skip caching */ }
+        }
+      }
+
+      if(allPlayers){
+        // index our OWN pool for lookups (excluding DST, which is handled separately by team code)
+        const ourByKey = {}; const ourByLastKey = {}; const ourLastSeen = {};
+        players.forEach(p=>{
+          if(p.pos==="DST") return;
+          ourByKey[normName(p.name)+"|"+p.pos] = p;
+          const lk = lastNameKeyOf(p.name, p.pos, p.team);
+          ourLastSeen[lk] = (ourLastSeen[lk]||0)+1;
+          if(ourLastSeen[lk]===1) ourByLastKey[lk] = p; else delete ourByLastKey[lk];
+        });
+
+        const relevantPositions = ["QB","RB","WR","TE","K"];
+        Object.values(allPlayers).forEach(sp=>{
+          if(!sp || !sp.full_name || !relevantPositions.includes(sp.position)) return;
+          if(!sp.team) return; // skip free agents / retired / practice-squad-only with no team
+          if(!sp.search_rank || sp.search_rank<=0 || sp.search_rank>=500) return; // keep to fantasy-relevant names
+
+          const key = normName(sp.full_name)+"|"+sp.position;
+          const lk = lastNameKeyOf(sp.full_name, sp.position, sp.team);
+          const existing = ourByKey[key] || ourByLastKey[lk];
+
+          if(existing){
+            // already in our pool — just make sure their team is current (catches trades/signings)
+            if(existing.team !== sp.team){ existing.team = sp.team; teamsUpdated++; }
+          } else {
+            // genuinely missing from our static pool (e.g. a kicker who just won a job battle)
+            const newPlayer = {
+              adp: sp.search_rank, name: sp.full_name, team: sp.team, pos: sp.position,
+              pts: estPts(sp.position, sp.search_rank), ownerId: null,
+            };
+            players.push(newPlayer);
+            ourByKey[key] = newPlayer; // so a second Sleeper entry for the same person doesn't double-add
+            playersAdded++;
+          }
+        });
+      }
+    }catch(dbErr){ console.warn("Player database sync skipped:", dbErr); }
+
+    // 3) pull picks
     const res = await fetch(`https://api.sleeper.app/v1/draft/${SLEEPER_DRAFT_ID}/picks`);
     if(!res.ok) throw new Error("HTTP "+res.status);
     const picks = await res.json();
@@ -802,30 +871,9 @@ async function syncFromSleeper(){
     renderAll();
     saveState();
 
-    // 3) pull search_rank (ADP) and, where available, actual points from Sleeper's player data.
-    // Note: Sleeper's stats endpoint isn't officially supported anymore, so this step is best-effort
-    // and silently skipped on failure — it never blocks pick syncing above.
+    // 4) pull search_rank (ADP) using the same allPlayers already fetched above.
     let adpUpdated = 0;
     try{
-      // cache the big players/nfl file for 20h since it's ~5MB and shouldn't be pulled every load
-      const CACHE_KEY = "ff-2026-sleeper-players-cache";
-      const CACHE_TS_KEY = "ff-2026-sleeper-players-cache-ts";
-      let allPlayers = null;
-      const cachedTs = localStorage.getItem(CACHE_TS_KEY);
-      if(cachedTs && (Date.now() - parseInt(cachedTs)) < 20*60*60*1000){
-        try{ allPlayers = JSON.parse(localStorage.getItem(CACHE_KEY)); }catch(e){ allPlayers = null; }
-      }
-      if(!allPlayers){
-        const pRes = await fetch("https://api.sleeper.app/v1/players/nfl");
-        if(pRes.ok){
-          allPlayers = await pRes.json();
-          try{
-            localStorage.setItem(CACHE_KEY, JSON.stringify(allPlayers));
-            localStorage.setItem(CACHE_TS_KEY, String(Date.now()));
-          }catch(e){ /* storage quota, fine to skip caching */ }
-        }
-      }
-
       if(allPlayers){
         // build normalized-"name|position" -> sleeper player_id + search_rank.
         // Keying on position too prevents cross-position name collisions (e.g. Sleeper has
@@ -882,6 +930,8 @@ async function syncFromSleeper(){
     document.getElementById('sleeperMeta').textContent =
       `Last synced ${now} \u2022 ${matched} picks matched` +
       (namesUpdated ? ` \u2022 ${namesUpdated} team name(s) updated` : "") +
+      (playersAdded ? ` \u2022 ${playersAdded} new player(s) added to pool` : "") +
+      (teamsUpdated ? ` \u2022 ${teamsUpdated} player team(s) updated` : "") +
       (adpUpdated ? ` \u2022 ${adpUpdated} ADP updated` : "") +
       (unmatched.length ? ` \u2022 ${unmatched.length} unmatched: ${unmatched.slice(0,5).join(", ")}${unmatched.length>5?"...":""}` : "");
     setSleeperStatus("Synced");
