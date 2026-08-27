@@ -497,19 +497,39 @@ const LINEUP_SLOTS = [
 
 function computeLineup(team){
   const roster = players.filter(p=>p.ownerId===team.id);
-  const usedNames = new Set();
-  const slots = LINEUP_SLOTS.map(def=>{
-    const pool = roster.filter(p=>def.positions.includes(p.pos) && !usedNames.has(p.name))
-                        .sort((a,b)=>b.pts-a.pts);
-    let chosen = null;
+
+  // Pass 1: honor every explicit manual selection first, regardless of slot order.
+  // This is what actually prevents "if Nico Collins is in WR1, he shouldn't be an
+  // option in WR2" from breaking — without this pass, a slot earlier in the fixed
+  // order (QB, RB, RB, WR, WR, TE, FLEX, K, DST) could auto-fill with a player another
+  // slot was explicitly, manually assigned, silently discarding the manual choice.
+  const claimedNames = new Set();
+  const claims = new Array(LINEUP_SLOTS.length).fill(null);
+  LINEUP_SLOTS.forEach((def,i)=>{
     const chosenName = team[def.key];
-    if(chosenName) chosen = pool.find(p=>p.name===chosenName) || null;
-    if(!chosen) chosen = pool[0] || null; // default to best available if unset or no longer valid
-    if(chosen) usedNames.add(chosen.name);
-    return {...def, player:chosen, pool};
+    if(!chosenName || claimedNames.has(chosenName)) return; // no pick, or already claimed by an earlier slot
+    const candidate = roster.find(p=>p.name===chosenName && def.positions.includes(p.pos));
+    if(candidate){ claims[i] = candidate; claimedNames.add(candidate.name); }
   });
 
-  const bench = roster.filter(p=>!usedNames.has(p.name));
+  // Pass 2: auto-fill anything still empty with the best remaining eligible player.
+  LINEUP_SLOTS.forEach((def,i)=>{
+    if(claims[i]) return;
+    const best = roster.filter(p=>def.positions.includes(p.pos) && !claimedNames.has(p.name))
+                        .sort((a,b)=>b.pts-a.pts)[0];
+    if(best){ claims[i] = best; claimedNames.add(best.name); }
+  });
+
+  // Build each slot's dropdown options: everyone eligible who isn't locked into a
+  // DIFFERENT slot, plus this slot's own current pick (so it still shows as selected).
+  const slots = LINEUP_SLOTS.map((def,i)=>{
+    const player = claims[i];
+    const pool = roster.filter(p=>def.positions.includes(p.pos) && (!claimedNames.has(p.name) || (player && p.name===player.name)))
+                        .sort((a,b)=>b.pts-a.pts);
+    return {...def, player, pool};
+  });
+
+  const bench = roster.filter(p=>!claimedNames.has(p.name));
   const starterTotal = slots.reduce((s,slot)=>s+(slot.player?slot.player.pts:0),0);
   const benchTotal = bench.reduce((s,p)=>s+p.pts,0);
 
