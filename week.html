@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>This Week</title>
+<style>
+  :root{
+    --bg:#0f1e17; --panel:#16281f; --panel2:#1c3226; --line:#2c4436;
+    --gold:#d4af37; --gold-dim:#a8862c; --text:#eef2ee; --sub:#9fb3a6;
+    --danger:#c65b4e; --accent:#4f9d78;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--text);}
+  .wrap{max-width:900px;margin:0 auto;padding:20px;}
+  h1{font-size:22px;margin:0 0 4px;}
+  .sub{color:var(--sub);font-size:13px;margin-bottom:10px;}
+  a{color:var(--gold);}
+  .pagenav{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;}
+  .navpill{background:var(--panel2);border:1px solid var(--line);color:var(--text);
+    text-decoration:none;padding:6px 16px;border-radius:20px;font-size:12px;font-weight:600;
+    transition:border-color .15s,background .15s;}
+  .navpill:hover{border-color:var(--gold-dim);}
+  .navpill.active{background:var(--gold);color:#1a1a1a;border-color:var(--gold);cursor:default;pointer-events:none;}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:18px;}
+  button{background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 12px;font-size:13px;cursor:pointer;font-weight:600;}
+  button:hover{background:#3d8763;}
+  .controls{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;}
+  .statusline{font-size:12px;color:var(--sub);}
+  .empty-state{color:var(--sub);font-size:14px;text-align:center;padding:40px 20px;}
+  .matchup{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:14px;
+    background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:12px;}
+  .side{text-align:center;}
+  .side.winning .teamname{color:var(--gold);}
+  .teamname{font-weight:700;font-size:15px;margin-bottom:4px;}
+  .score{font-size:26px;font-weight:700;}
+  .vs{color:var(--sub);font-size:12px;font-weight:700;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>This Week</h1>
+  <div class="sub">Live matchups for the current week &mdash; pulled from Sleeper</div>
+  <div class="pagenav">
+    <a href="index.html" class="navpill">Home</a>
+    <a href="draft.html" class="navpill">Draft</a>
+    <a href="season.html" class="navpill">Season</a>
+    <a href="week.html" class="navpill active">This Week</a>
+    <a href="news.html" class="navpill">News</a>
+  </div>
+
+  <div class="controls">
+    <button id="syncBtn">Refresh Scores</button>
+    <span class="statusline" id="syncStatus"></span>
+  </div>
+
+  <div id="content"></div>
+</div>
+
+<script>
+const SLEEPER_DRAFT_ID_KEY = "ff-2026-sleeper-draft-id";
+const DEFAULT_SLEEPER_DRAFT_ID = "1378473537542565888";
+const WEEK_CACHE_KEY = "ff-2026-thisweek-cache";
+
+function getDraftId(){ return localStorage.getItem(SLEEPER_DRAFT_ID_KEY) || DEFAULT_SLEEPER_DRAFT_ID; }
+function loadCache(){ try{ return JSON.parse(localStorage.getItem(WEEK_CACHE_KEY)); }catch(e){ return null; } }
+function saveCache(d){ try{ localStorage.setItem(WEEK_CACHE_KEY, JSON.stringify(d)); }catch(e){} }
+
+async function syncWeek(){
+  const btn = document.getElementById('syncBtn');
+  const statusEl = document.getElementById('syncStatus');
+  btn.disabled = true;
+  statusEl.textContent = "Checking season status...";
+  try{
+    const stateRes = await fetch("https://api.sleeper.app/v1/state/nfl");
+    const nflState = stateRes.ok ? await stateRes.json() : {week:1, season_type:"pre"};
+    if(nflState.season_type !== "regular"){
+      saveCache({seasonStarted:false, syncedAt:Date.now()});
+      statusEl.textContent = `Season hasn't started yet (Sleeper reports "${nflState.season_type}")`;
+      render();
+      return;
+    }
+    const currentWeek = Math.max(1, nflState.week || 1);
+
+    const draftId = getDraftId();
+    const draftRes = await fetch(`https://api.sleeper.app/v1/draft/${draftId}`);
+    if(!draftRes.ok) throw new Error("Could not load draft/league info");
+    const draftInfo = await draftRes.json();
+    const leagueId = draftInfo.league_id;
+    const slotToRoster = draftInfo.slot_to_roster_id || {};
+    if(!leagueId) throw new Error("No league_id found for this draft");
+    const teamIdByRosterId = {};
+    Object.entries(slotToRoster).forEach(([slot, rosterId])=>{ teamIdByRosterId[rosterId] = parseInt(slot); });
+
+    statusEl.textContent = `Loading week ${currentWeek} matchups...`;
+    const [rostersRes, usersRes, matchupsRes] = await Promise.all([
+      fetch(`https://api.sleeper.app/v1/league/${leagueId}/rosters`),
+      fetch(`https://api.sleeper.app/v1/league/${leagueId}/users`),
+      fetch(`https://api.sleeper.app/v1/league/${leagueId}/matchups/${currentWeek}`),
+    ]);
+    const rosters = rostersRes.ok ? await rostersRes.json() : [];
+    const users = usersRes.ok ? await usersRes.json() : [];
+    const matchups = matchupsRes.ok ? await matchupsRes.json() : [];
+
+    const ownerIdToName = {};
+    users.forEach(u=>{ ownerIdToName[u.user_id] = (u.metadata && u.metadata.team_name) || u.display_name; });
+    const rosterMeta = {};
+    rosters.forEach(r=>{ rosterMeta[r.roster_id] = { name: ownerIdToName[r.owner_id] || ("Roster "+r.roster_id) }; });
+
+    const byMatchupId = {};
+    matchups.forEach(m=>{
+      if(m.matchup_id==null) return;
+      (byMatchupId[m.matchup_id] = byMatchupId[m.matchup_id]||[]).push(m);
+    });
+    const pairs = Object.values(byMatchupId)
+      .filter(pair=>pair.length===2)
+      .map(pair=>({
+        a:{name:(rosterMeta[pair[0].roster_id]&&rosterMeta[pair[0].roster_id].name)||"Team", pts:pair[0].points||0},
+        b:{name:(rosterMeta[pair[1].roster_id]&&rosterMeta[pair[1].roster_id].name)||"Team", pts:pair[1].points||0},
+      }));
+
+    saveCache({seasonStarted:true, currentWeek, pairs, syncedAt:Date.now()});
+    statusEl.textContent = "Updated";
+    render();
+  }catch(e){
+    statusEl.textContent = "Sync failed: " + e.message;
+    console.error(e);
+  }finally{
+    btn.disabled = false;
+    setTimeout(()=>{ if(statusEl.textContent==="Updated") statusEl.textContent=""; }, 3000);
+  }
+}
+
+function render(){
+  const data = loadCache();
+  const el = document.getElementById('content');
+  if(!data){
+    el.innerHTML = `<div class="panel"><div class="empty-state">Click <b>Refresh Scores</b> above to load this week's matchups.</div></div>`;
+    return;
+  }
+  if(!data.seasonStarted){
+    el.innerHTML = `<div class="panel"><div class="empty-state">
+      The regular season hasn't started yet, so there are no live matchups to show.<br>
+      Check back once Week 1 kicks off.
+    </div></div>`;
+    return;
+  }
+  if(!data.pairs || !data.pairs.length){
+    el.innerHTML = `<div class="panel"><div class="empty-state">No matchup data found for week ${data.currentWeek}.</div></div>`;
+    return;
+  }
+  el.innerHTML = `<div class="sub" style="margin-bottom:14px;">Week ${data.currentWeek}</div>` +
+    data.pairs.map(p=>{
+      const aWin = p.a.pts > p.b.pts, bWin = p.b.pts > p.a.pts;
+      return `<div class="matchup">
+        <div class="side ${aWin?'winning':''}"><div class="teamname">${p.a.name}</div><div class="score">${p.a.pts.toFixed(1)}</div></div>
+        <div class="vs">VS</div>
+        <div class="side ${bWin?'winning':''}"><div class="teamname">${p.b.name}</div><div class="score">${p.b.pts.toFixed(1)}</div></div>
+      </div>`;
+    }).join("");
+}
+
+document.getElementById('syncBtn').onclick = syncWeek;
+render();
+syncWeek();
+</script>
+</body>
+</html>
