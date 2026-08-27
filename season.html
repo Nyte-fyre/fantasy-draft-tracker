@@ -50,6 +50,7 @@
 
   <div class="controls">
     <button id="syncBtn">Sync from Sleeper</button>
+    <button id="resetBtn" style="background:var(--danger);">Reset Sync Data</button>
     <span class="statusline" id="syncStatus"></span>
   </div>
 
@@ -164,8 +165,18 @@ async function syncSeason(){
     ]);
     const rosters = rostersRes.ok ? await rostersRes.json() : [];
     const users = usersRes.ok ? await usersRes.json() : [];
-    const nflState = stateRes.ok ? await stateRes.json() : {week:1};
-    const currentWeek = Math.max(1, nflState.week || 1);
+    const nflState = stateRes.ok ? await stateRes.json() : {week:1, season_type:"regular"};
+    // Sleeper's /state/nfl reports a week number even during preseason/offseason — that
+    // number does NOT correspond to real fantasy matchups, so treat anything other than
+    // "regular" season_type as "the season hasn't actually started yet."
+    const seasonStarted = nflState.season_type === "regular";
+    const currentWeek = seasonStarted ? Math.max(1, nflState.week || 1) : 0;
+
+    if(!seasonStarted){
+      statusEl.textContent = `Regular season hasn't started yet (Sleeper reports "${nflState.season_type}") — no matchups to sync until Week 1 kicks off.`;
+      btn.disabled = false;
+      return;
+    }
 
     const ownerIdToName = {};
     users.forEach(u=>{ ownerIdToName[u.user_id] = (u.metadata && u.metadata.team_name) || u.display_name; });
@@ -402,6 +413,14 @@ function render(){
 }
 
 document.getElementById('syncBtn').onclick = syncSeason;
+
+document.getElementById('resetBtn').onclick = () => {
+  const ok = confirm("This clears all cached standings, matchups, and transaction data for this browser (your draft tracker data is untouched). You'll need to sync again from scratch. Continue?");
+  if(!ok) return;
+  localStorage.removeItem(SEASON_CACHE_KEY);
+  document.getElementById('syncStatus').textContent = "Cache cleared — click Sync from Sleeper to rebuild it.";
+  render();
+};
 render();
 syncSeason();
 </script>
