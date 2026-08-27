@@ -188,14 +188,38 @@ async function syncSeason(){
       return p.full_name || (p.first_name && p.last_name ? p.first_name+" "+p.last_name : pid);
     };
 
-    statusEl.textContent = `Loading weekly scores (weeks 1-${currentWeek})...`;
+    // Reuse whatever per-week data we already fetched on a previous sync. A "completed"
+    // week (anything before the current in-progress one) never changes once it's final,
+    // so it only ever needs to be fetched once. Only the current week — and any week
+    // number we haven't seen before — actually needs a fresh network call.
+    const prevCache = loadSeasonCache() || {};
+    const weekMatchups = prevCache.weekMatchups || {};
+    const weekTransactions = prevCache.weekTransactions || {};
+    let weeksFetched = 0, weeksReused = 0;
+
+    for(let week=1; week<=currentWeek; week++){
+      const isCompleted = week < currentWeek;
+      const haveIt = weekMatchups[week] !== undefined && weekTransactions[week] !== undefined;
+      if(isCompleted && haveIt){ weeksReused++; continue; }
+
+      statusEl.textContent = `Loading week ${week} of ${currentWeek}...`;
+      weeksFetched++;
+      const [mRes, tRes] = await Promise.all([
+        fetch(`https://api.sleeper.app/v1/league/${leagueId}/matchups/${week}`),
+        fetch(`https://api.sleeper.app/v1/league/${leagueId}/transactions/${week}`),
+      ]);
+      weekMatchups[week] = mRes.ok ? await mRes.json() : [];
+      const txns = tRes.ok ? await tRes.json() : [];
+      txns.forEach(t=>t._week = week);
+      weekTransactions[week] = txns;
+    }
+
+    statusEl.textContent = "Crunching standings...";
     const standings = {}; // teamId -> {w,l,t,pf}
     Object.values(rosterMeta).forEach(rm=>{ if(rm.teamId) standings[rm.teamId] = {w:0,l:0,t:0,pf:0,name:rm.name}; });
 
     for(let week=1; week<=currentWeek; week++){
-      const mRes = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/matchups/${week}`);
-      if(!mRes.ok) continue;
-      const matchups = await mRes.json();
+      const matchups = weekMatchups[week] || [];
       const byMatchupId = {};
       matchups.forEach(m=>{
         if(m.matchup_id==null) return;
@@ -207,7 +231,7 @@ async function syncSeason(){
           if(!rm || !rm.teamId || !standings[rm.teamId]) return;
           standings[rm.teamId].pf += m.points || 0;
         });
-        if(pair.length===2 && (pair[0].points||0) !== undefined && week < currentWeek){
+        if(pair.length===2 && week < currentWeek){
           // only score W/L for completed weeks (not the in-progress current week)
           const [a,b] = pair;
           const rmA = rosterMeta[a.roster_id], rmB = rosterMeta[b.roster_id];
@@ -220,14 +244,9 @@ async function syncSeason(){
       });
     }
 
-    statusEl.textContent = "Loading transactions (trades & waivers)...";
     let allTxns = [];
     for(let week=1; week<=currentWeek; week++){
-      const tRes = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/transactions/${week}`);
-      if(!tRes.ok) continue;
-      const txns = await tRes.json();
-      txns.forEach(t=>t._week = week);
-      allTxns = allTxns.concat(txns);
+      allTxns = allTxns.concat(weekTransactions[week] || []);
     }
     allTxns.sort((a,b)=> (b.status_updated||0) - (a.status_updated||0));
 
@@ -242,6 +261,8 @@ async function syncSeason(){
 
     const seasonData = {
       currentWeek,
+      weekMatchups,       // cached raw per-week data, reused on future syncs
+      weekTransactions,   // cached raw per-week data, reused on future syncs
       standings: Object.entries(standings).map(([teamId,s])=>({teamId:parseInt(teamId), ...s})),
       transactions: allTxns.slice(0, 100).map(t=>({
         type: t.type, week: t._week, status_updated: t.status_updated,
@@ -253,7 +274,9 @@ async function syncSeason(){
       syncedAt: Date.now(),
     };
     saveSeasonCache(seasonData);
-    statusEl.textContent = `Synced through week ${currentWeek}`;
+    statusEl.textContent = weeksReused>0
+      ? `Synced \u2014 ${weeksFetched} week(s) fetched, ${weeksReused} reused from cache`
+      : `Synced through week ${currentWeek}`;
     render();
   }catch(e){
     statusEl.textContent = "Sync failed: " + e.message;
