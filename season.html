@@ -51,6 +51,7 @@
   <div class="controls">
     <button id="syncBtn">Sync from Sleeper</button>
     <button id="resetBtn" style="background:var(--danger);">Reset Sync Data</button>
+    <button id="previewBtn" style="background:var(--panel2);border:1px solid var(--gold-dim);color:var(--gold);">Preview with Sample Data</button>
     <span class="statusline" id="syncStatus"></span>
   </div>
 
@@ -322,6 +323,11 @@ function render(){
       Click <b>Sync from Sleeper</b> above to pull in standings, waiver wire, and trade history.
     </div></div>`;
   } else {
+    const previewBanner = seasonData.isPreview
+      ? `<div class="panel" style="border-color:var(--gold);background:#3a2f0f;">
+          <b style="color:var(--gold);">PREVIEW MODE</b> — everything below is fake sample data for testing how the page looks and behaves. Click <b>Reset Sync Data</b> before your real season starts.
+        </div>`
+      : "";
     // match season standings (keyed by teamId 1-10) to the draft tracker's team names/nicknames
     const teamById = {};
     draftData.teams.forEach(t=>teamById[t.id]=t);
@@ -358,6 +364,7 @@ function render(){
       </tr>`).join("");
 
     el.innerHTML = `
+      ${previewBanner}
       <div class="panel">
         <h2>Standings <span style="color:var(--sub);font-weight:400;font-size:11px;">(through week ${seasonData.currentWeek - 1 || 1})</span></h2>
         <table>
@@ -418,9 +425,49 @@ document.getElementById('resetBtn').onclick = () => {
   const ok = confirm("This clears all cached standings, matchups, and transaction data for this browser (your draft tracker data is untouched). You'll need to sync again from scratch. Continue?");
   if(!ok) return;
   localStorage.removeItem(SEASON_CACHE_KEY);
-  document.getElementById('syncStatus').textContent = "Cache cleared — click Sync from Sleeper to rebuild it.";
+  document.getElementById('syncStatus').textContent = "Cache cleared \u2014 click Sync from Sleeper to rebuild it.";
   render();
 };
+
+document.getElementById('previewBtn').onclick = () => {
+  const draftData = loadDraftSharedData();
+  if(!draftData || !draftData.teams.length){
+    document.getElementById('syncStatus').textContent = "Load the Draft Tracker first so there are real teams to build a preview from.";
+    return;
+  }
+  // Build believable-looking fake data using your REAL team names/nicknames, so the
+  // preview looks like your actual league — but every number here is made up.
+  const standings = draftData.teams.map((t,i)=>{
+    const w = Math.floor(Math.random()*4);
+    const l = 3 - w >= 0 ? 3 - w : 0;
+    return {teamId:t.id, w, l, t:0, pf: Math.round(280 + Math.random()*140), name:t.name};
+  });
+  const sampleNames = draftData.teams.length>=2 ? [draftData.teams[0].name, draftData.teams[1].name] : ["Team A","Team B"];
+  const transactions = [
+    {type:"waiver", week:2, status_updated:Date.now()-86400000, rosterNames:[sampleNames[0]],
+      adds:[{player:"(sample) Waiver Pickup", team:sampleNames[0]}], drops:[{player:"(sample) Bench Cut", team:sampleNames[0]}]},
+    {type:"trade", week:1, status_updated:Date.now()-172800000, rosterNames:sampleNames,
+      adds:[{player:"(sample) Player X", team:sampleNames[0]},{player:"(sample) Player Y", team:sampleNames[1]}],
+      drops:[]},
+    {type:"free_agent", week:3, status_updated:Date.now()-3600000, rosterNames:[sampleNames[1]||sampleNames[0]],
+      adds:[{player:"(sample) FA Add", team:sampleNames[1]||sampleNames[0]}], drops:[]},
+  ];
+  const availablePlayers = [
+    {id:"p1", name:"(sample) Available Player 1", pos:"RB", team:"---"},
+    {id:"p2", name:"(sample) Available Player 2", pos:"WR", team:"---"},
+    {id:"p3", name:"(sample) Available Player 3", pos:"TE", team:"---"},
+  ];
+  saveSeasonCache({
+    currentWeek: 4,
+    weekMatchups: {}, weekTransactions: {},
+    standings, transactions, availablePlayers,
+    isPreview: true,
+    syncedAt: Date.now(),
+  });
+  document.getElementById('syncStatus').textContent = "Preview data loaded \u2014 remember to Reset before the real season.";
+  render();
+};
+
 render();
 syncSeason();
 </script>
