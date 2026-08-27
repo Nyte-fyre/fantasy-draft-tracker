@@ -46,7 +46,11 @@
 <div class="wrap">
   <h1>2026 Season Tracker</h1>
   <div class="sub">Standings, waiver wire, and trade history &mdash; pulled live from Sleeper &middot; starting lineups shared with the draft tracker</div>
-  <div style="margin-bottom:10px;"><a href="index.html">&larr; Back to Draft Tracker</a></div>
+  <div style="margin-bottom:10px;display:flex;gap:14px;font-size:13px;">
+    <a href="index.html" style="text-decoration:none;">&#8962; Home</a>
+    <span style="color:var(--sub);">&middot;</span>
+    <a href="draft.html" style="text-decoration:none;">&larr; Draft Tracker</a>
+  </div>
 
   <div class="controls">
     <button id="syncBtn">Sync from Sleeper</button>
@@ -313,7 +317,7 @@ function render(){
   if(!draftData || !draftData.teams.length){
     el.innerHTML = `<div class="panel"><div class="empty-state">
       No draft data found yet in this browser.<br>
-      Open the <a href="index.html">Draft Tracker</a> first, sync it, then come back here.
+      Open the <a href="draft.html">Draft Tracker</a> first, sync it, then come back here.
     </div></div>`;
     return;
   }
