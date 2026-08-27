@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>News</title>
+<style>
+  :root{
+    --bg:#0f1e17; --panel:#16281f; --panel2:#1c3226; --line:#2c4436;
+    --gold:#d4af37; --gold-dim:#a8862c; --text:#eef2ee; --sub:#9fb3a6;
+    --danger:#c65b4e; --accent:#4f9d78;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--text);}
+  .wrap{max-width:1000px;margin:0 auto;padding:20px;}
+  h1{font-size:22px;margin:0 0 4px;}
+  h2{font-size:15px;margin:0 0 10px;color:var(--gold);}
+  .sub{color:var(--sub);font-size:13px;margin-bottom:10px;}
+  a{color:var(--gold);}
+  .pagenav{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;}
+  .navpill{background:var(--panel2);border:1px solid var(--line);color:var(--text);
+    text-decoration:none;padding:6px 16px;border-radius:20px;font-size:12px;font-weight:600;
+    transition:border-color .15s,background .15s;}
+  .navpill:hover{border-color:var(--gold-dim);}
+  .navpill.active{background:var(--gold);color:#1a1a1a;border-color:var(--gold);cursor:default;pointer-events:none;}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:18px;}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  thead th{text-align:left;color:var(--sub);font-weight:500;padding:6px;border-bottom:1px solid var(--line);}
+  tbody td{padding:6px;border-bottom:1px solid #223429;}
+  tbody tr:hover{background:var(--panel2);}
+  button{background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 12px;font-size:13px;cursor:pointer;font-weight:600;}
+  button:hover{background:#3d8763;}
+  .controls{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;}
+  .statusline{font-size:12px;color:var(--sub);}
+  .empty-state{color:var(--sub);font-size:14px;text-align:center;padding:40px 20px;}
+  .postag{font-size:9px;padding:1px 5px;border-radius:4px;font-weight:600;margin-right:4px;}
+  .QB{background:#4a2f6b;color:#dcc8ff;} .RB{background:#1d5c3f;color:#b8f0d4;}
+  .WR{background:#1d4a6b;color:#bfe0ff;} .TE{background:#7a4a12;color:#ffd9a0;}
+  .DST{background:#5c1f1f;color:#ffc4c4;} .K{background:#3d3d1a;color:#eef0b8;}
+  .injbadge{font-size:10px;padding:2px 7px;border-radius:10px;font-weight:700;text-transform:uppercase;}
+  .inj-Questionable{background:#5c4a1f;color:#ffe6a0;}
+  .inj-Doubtful{background:#5c2f1f;color:#ffc9a0;}
+  .inj-Out{background:#5c1f1f;color:#ffc4c4;}
+  .inj-IR{background:#3a1f5c;color:#dcc4ff;}
+  .inj-PUP{background:#3a1f5c;color:#dcc4ff;}
+  .trendcount{color:var(--gold);font-weight:700;}
+  .scroll{max-height:420px;overflow-y:auto;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>News Room</h1>
+  <div class="sub">Injury report for your league's rosters, plus leaguewide trending waiver activity &mdash; pulled live from Sleeper</div>
+  <div class="pagenav">
+    <a href="index.html" class="navpill">Home</a>
+    <a href="draft.html" class="navpill">Draft</a>
+    <a href="season.html" class="navpill">Season</a>
+    <a href="week.html" class="navpill">This Week</a>
+    <a href="news.html" class="navpill active">News</a>
+  </div>
+
+  <div class="controls">
+    <button id="syncBtn">Sync News</button>
+    <span class="statusline" id="syncStatus"></span>
+  </div>
+
+  <div id="content"></div>
+</div>
+
+<script>
+const DRAFT_STORAGE_KEY = "ff-2026-draft-state";
+const SLEEPER_DRAFT_ID_KEY = "ff-2026-sleeper-draft-id";
+const DEFAULT_SLEEPER_DRAFT_ID = "1378473537542565888";
+const PLAYERS_CACHE_KEY = "ff-2026-sleeper-players-cache";
+const PLAYERS_CACHE_TS_KEY = "ff-2026-sleeper-players-cache-ts";
+const NEWS_CACHE_KEY = "ff-2026-news-cache";
+
+function getDraftId(){ return localStorage.getItem(SLEEPER_DRAFT_ID_KEY) || DEFAULT_SLEEPER_DRAFT_ID; }
+
+async function fetchAllSleeperPlayers(){
+  const cachedTs = localStorage.getItem(PLAYERS_CACHE_TS_KEY);
+  if(cachedTs && (Date.now() - parseInt(cachedTs)) < 20*60*60*1000){
+    try{ return JSON.parse(localStorage.getItem(PLAYERS_CACHE_KEY)); }catch(e){}
+  }
+  const res = await fetch("https://api.sleeper.app/v1/players/nfl");
+  if(!res.ok) throw new Error("players fetch failed");
+  const data = await res.json();
+  try{
+    localStorage.setItem(PLAYERS_CACHE_KEY, JSON.stringify(data));
+    localStorage.setItem(PLAYERS_CACHE_TS_KEY, String(Date.now()));
+  }catch(e){}
+  return data;
+}
+
+function loadNewsCache(){ try{ return JSON.parse(localStorage.getItem(NEWS_CACHE_KEY)); }catch(e){ return null; } }
+function saveNewsCache(d){ try{ localStorage.setItem(NEWS_CACHE_KEY, JSON.stringify(d)); }catch(e){} }
+
+async function syncNews(){
+  const btn = document.getElementById('syncBtn');
+  const statusEl = document.getElementById('syncStatus');
+  btn.disabled = true;
+  statusEl.textContent = "Loading league info...";
+  try{
+    const draftId = getDraftId();
+    const draftRes = await fetch(`https://api.sleeper.app/v1/draft/${draftId}`);
+    if(!draftRes.ok) throw new Error("Could not load draft/league info");
+    const draftInfo = await draftRes.json();
+    const leagueId = draftInfo.league_id;
+    const slotToRoster = draftInfo.slot_to_roster_id || {};
+    if(!leagueId) throw new Error("No league_id found for this draft");
+
+    const teamIdByRosterId = {};
+    Object.entries(slotToRoster).forEach(([slot, rosterId])=>{ teamIdByRosterId[rosterId] = parseInt(slot); });
+
+    const [rostersRes, usersRes] = await Promise.all([
+      fetch(`https://api.sleeper.app/v1/league/${leagueId}/rosters`),
+      fetch(`https://api.sleeper.app/v1/league/${leagueId}/users`),
+    ]);
+    const rosters = rostersRes.ok ? await rostersRes.json() : [];
+    const users = usersRes.ok ? await usersRes.json() : [];
+    const ownerIdToName = {};
+    users.forEach(u=>{ ownerIdToName[u.user_id] = (u.metadata && u.metadata.team_name) || u.display_name; });
+
+    // player_id -> which fantasy team has them (name), if any
+    const rosteredBy = {};
+    rosters.forEach(r=>{
+      const teamName = ownerIdToName[r.owner_id] || ("Roster "+r.roster_id);
+      (r.players||[]).forEach(pid=>{ rosteredBy[pid] = teamName; });
+    });
+
+    statusEl.textContent = "Loading player database...";
+    const allPlayers = await fetchAllSleeperPlayers();
+
+    statusEl.textContent = "Building injury report...";
+    const injuries = [];
+    Object.entries(rosteredBy).forEach(([pid, teamName])=>{
+      const p = allPlayers[pid];
+      if(p && p.injury_status){
+        injuries.push({
+          name: p.full_name || (p.first_name+" "+p.last_name),
+          pos: p.position, team: p.team, status: p.injury_status,
+          note: p.injury_body_part || "", fantasyTeam: teamName,
+        });
+      }
+    });
+    injuries.sort((a,b)=> a.fantasyTeam.localeCompare(b.fantasyTeam) || a.name.localeCompare(b.name));
+
+    statusEl.textContent = "Loading trending players...";
+    const [addRes, dropRes] = await Promise.all([
+      fetch("https://api.sleeper.app/v1/players/nfl/trending/add?lookback_hours=24&limit=25"),
+      fetch("https://api.sleeper.app/v1/players/nfl/trending/drop?lookback_hours=24&limit=25"),
+    ]);
+    const addTrend = addRes.ok ? await addRes.json() : [];
+    const dropTrend = dropRes.ok ? await dropRes.json() : [];
+
+    const mapTrend = arr => arr.map(t=>{
+      const p = allPlayers[t.player_id];
+      return {
+        name: p ? (p.full_name || (p.first_name+" "+p.last_name)) : t.player_id,
+        pos: p ? p.position : "?", team: p ? p.team : "?",
+        count: t.count, rosteredBy: rosteredBy[t.player_id] || null,
+      };
+    });
+
+    const newsData = {
+      injuries,
+      trendingAdds: mapTrend(addTrend),
+      trendingDrops: mapTrend(dropTrend),
+      syncedAt: Date.now(),
+    };
+    saveNewsCache(newsData);
+    statusEl.textContent = "Synced";
+    render();
+  }catch(e){
+    statusEl.textContent = "Sync failed: " + e.message;
+    console.error(e);
+  }finally{
+    btn.disabled = false;
+    setTimeout(()=>{ if(statusEl.textContent==="Synced") statusEl.textContent=""; }, 3000);
+  }
+}
+
+function render(){
+  const data = loadNewsCache();
+  const el = document.getElementById('content');
+  if(!data){
+    el.innerHTML = `<div class="panel"><div class="empty-state">Click <b>Sync News</b> above to load the injury report and trending players.</div></div>`;
+    return;
+  }
+
+  const injRows = data.injuries.map(p=>`
+    <tr>
+      <td><span class="postag ${p.pos}">${p.pos}</span>${p.name} <span style="color:var(--sub);font-size:11px;">${p.team}</span></td>
+      <td><span class="injbadge inj-${p.status}">${p.status}</span></td>
+      <td style="color:var(--sub);">${p.note||"-"}</td>
+      <td style="color:var(--gold);">${p.fantasyTeam}</td>
+    </tr>`).join("");
+
+  const trendRow = t => `
+    <tr>
+      <td><span class="postag ${t.pos}">${t.pos}</span>${t.name} <span style="color:var(--sub);font-size:11px;">${t.team}</span></td>
+      <td class="trendcount">${t.count}</td>
+      <td>${t.rosteredBy ? `<span style="color:var(--sub);">Rostered: ${t.rosteredBy}</span>` : '<span style="color:var(--accent);">Available</span>'}</td>
+    </tr>`;
+
+  el.innerHTML = `
+    <div class="panel">
+      <h2>Injury Report <span style="color:var(--sub);font-weight:400;font-size:11px;">(your league's rosters only)</span></h2>
+      <div class="scroll"><table>
+        <thead><tr><th>Player</th><th>Status</th><th>Note</th><th>Fantasy Team</th></tr></thead>
+        <tbody>${injRows || '<tr><td colspan="4" style="color:var(--sub);">No reported injuries among rostered players</td></tr>'}</tbody>
+      </table></div>
+    </div>
+
+    <div class="panel">
+      <h2>Trending Adds <span style="color:var(--sub);font-weight:400;font-size:11px;">(leaguewide on Sleeper, last 24h)</span></h2>
+      <div class="scroll"><table>
+        <thead><tr><th>Player</th><th># Adds</th><th>Status</th></tr></thead>
+        <tbody>${data.trendingAdds.map(trendRow).join("") || '<tr><td colspan="3" style="color:var(--sub);">No data</td></tr>'}</tbody>
+      </table></div>
+    </div>
+
+    <div class="panel">
+      <h2>Trending Drops <span style="color:var(--sub);font-weight:400;font-size:11px;">(leaguewide on Sleeper, last 24h)</span></h2>
+      <div class="scroll"><table>
+        <thead><tr><th>Player</th><th># Drops</th><th>Status</th></tr></thead>
+        <tbody>${data.trendingDrops.map(trendRow).join("") || '<tr><td colspan="3" style="color:var(--sub);">No data</td></tr>'}</tbody>
+      </table></div>
+    </div>
+  `;
+}
+
+document.getElementById('syncBtn').onclick = syncNews;
+render();
+syncNews();
+</script>
+</body>
+</html>
