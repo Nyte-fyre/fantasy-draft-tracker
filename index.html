@@ -112,14 +112,14 @@
           <option value="name">Sort: Name</option>
         </select>
         <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--sub);white-space:nowrap;cursor:pointer;">
-          <input type="checkbox" id="showTaken" checked style="cursor:pointer;">
+          <input type="checkbox" id="showTaken" style="cursor:pointer;">
           Show taken players
         </label>
       </div>
       <div class="postab" id="posTab"></div>
       <div class="scroll">
         <table>
-          <thead><tr><th>ADP</th><th>Player</th><th>Pos</th><th>Pts</th><th>vs top</th><th>Status</th></tr></thead>
+          <thead><tr><th>ADP</th><th>Player</th><th>Pos</th><th>Pts</th><th>vs top</th><th>Team</th><th>Draft</th></tr></thead>
           <tbody id="poolBody"></tbody>
         </table>
       </div>
@@ -128,7 +128,7 @@
 
     <div class="panel">
       <h2>Teams</h2>
-      <div id="teams"></div>
+      <div class="scroll" id="teamsScroll"><div id="teams"></div></div>
     </div>
   </div>
 
@@ -307,7 +307,8 @@ const VIEWER_KEY = "ff-2026-viewer-team";
 let MY_TEAM_ID = null; // set per-browser via the "Viewing as" selector, not shared
 let teams = [];
 for(let i=1;i<=N_TEAMS;i++){
-  teams.push({id:i, name: TEAM_NAMES[i-1], picks:[], flexId:null});
+  teams.push({id:i, name: TEAM_NAMES[i-1], picks:[],
+    qbId:null, rb1Id:null, rb2Id:null, wr1Id:null, wr2Id:null, teId:null, flexId:null, kId:null, dstId:null});
 }
 
 // No picks are baked into the file anymore — teams start empty and get populated
@@ -405,8 +406,9 @@ function renderPool(){
       <td><span class="postag ${p.pos}">${p.pos}</span></td>
       <td contenteditable="true" data-name="${p.name.replace(/"/g,'&quot;')}" class="ptsEdit">${p.pts}</td>
       <td>${diffCell}</td>
+      <td>${taken ? `<span style="color:var(--gold);font-size:12px;">${ownerName}</span>` : '<span style="color:var(--sub)">-</span>'}</td>
       <td>${taken
-        ? `<span style="color:var(--sub)">${ownerName}</span>`
+        ? `<span style="color:var(--sub);font-size:11px;">drafted</span>`
         : `<select data-name="${p.name.replace(/"/g,'&quot;')}" class="draftSel">
              <option value="">Draft to...</option>
              ${teams.map(t=>`<option value="${t.id}">${t.name}</option>`).join("")}
@@ -477,70 +479,57 @@ function renderTeams(){
   });
 }
 
-// ---------- starting lineups (auto-filled starters, user-chosen FLEX, bench separated out) ----------
+// ---------- starting lineups (every slot is user-selectable, defaults to best available) ----------
+const LINEUP_SLOTS = [
+  {key:"qbId",   label:"QB",   positions:["QB"]},
+  {key:"rb1Id",  label:"RB",   positions:["RB"]},
+  {key:"rb2Id",  label:"RB",   positions:["RB"]},
+  {key:"wr1Id",  label:"WR",   positions:["WR"]},
+  {key:"wr2Id",  label:"WR",   positions:["WR"]},
+  {key:"teId",   label:"TE",   positions:["TE"]},
+  {key:"flexId", label:"FLEX", positions:["RB","WR","TE"]},
+  {key:"kId",    label:"K",    positions:["K"]},
+  {key:"dstId",  label:"DST",  positions:["DST"]},
+];
+
 function computeLineup(team){
   const roster = players.filter(p=>p.ownerId===team.id);
-  const byPos = pos => roster.filter(p=>p.pos===pos).sort((a,b)=>b.pts-a.pts);
-
-  const qb = byPos("QB")[0] || null;
-  const rbs = byPos("RB");
-  const wrs = byPos("WR");
-  const tes = byPos("TE");
-  const k = byPos("K")[0] || null;
-  const dst = byPos("DST")[0] || null;
-
-  const rb1 = rbs[0] || null, rb2 = rbs[1] || null;
-  const wr1 = wrs[0] || null, wr2 = wrs[1] || null;
-  const te1 = tes[0] || null;
-
-  const usedNames = new Set([qb,rb1,rb2,wr1,wr2,te1,k,dst].filter(Boolean).map(p=>p.name));
-
-  // FLEX eligible pool = any RB/WR/TE not already starting
-  const flexPool = roster.filter(p=>(p.pos==="RB"||p.pos==="WR"||p.pos==="TE") && !usedNames.has(p.name))
-                          .sort((a,b)=>b.pts-a.pts);
-
-  let flex = null;
-  if(team.flexId){
-    flex = flexPool.find(p=>p.name===team.flexId) || null;
-  }
-  if(!flex) flex = flexPool[0] || null; // default to best available if nothing chosen or choice no longer valid
-  if(flex) usedNames.add(flex.name);
+  const usedNames = new Set();
+  const slots = LINEUP_SLOTS.map(def=>{
+    const pool = roster.filter(p=>def.positions.includes(p.pos) && !usedNames.has(p.name))
+                        .sort((a,b)=>b.pts-a.pts);
+    let chosen = null;
+    const chosenName = team[def.key];
+    if(chosenName) chosen = pool.find(p=>p.name===chosenName) || null;
+    if(!chosen) chosen = pool[0] || null; // default to best available if unset or no longer valid
+    if(chosen) usedNames.add(chosen.name);
+    return {...def, player:chosen, pool};
+  });
 
   const bench = roster.filter(p=>!usedNames.has(p.name));
-  const starters = [qb,rb1,rb2,wr1,wr2,te1,flex,k,dst];
-  const starterTotal = starters.reduce((s,p)=>s+(p?p.pts:0),0);
+  const starterTotal = slots.reduce((s,slot)=>s+(slot.player?slot.player.pts:0),0);
   const benchTotal = bench.reduce((s,p)=>s+p.pts,0);
 
-  return {qb,rb1,rb2,wr1,wr2,te1,flex,k,dst,flexPool,bench,starterTotal,benchTotal};
-}
-
-function slotRow(label, player){
-  if(!player) return `<div class="slotrow"><span class="slotlabel">${label}</span><span class="slotempty">empty</span></div>`;
-  return `<div class="slotrow"><span class="slotlabel">${label}</span><span class="slotname">${player.name}</span><span class="slotpts">${player.pts}</span></div>`;
+  return {slots, bench, starterTotal, benchTotal};
 }
 
 function renderStarters(){
   const el = document.getElementById('starters');
   el.innerHTML = teams.map(t=>{
     const L = computeLineup(t);
-    const flexOptions = L.flexPool.length
-      ? L.flexPool.map(p=>`<option value="${p.name.replace(/"/g,'&quot;')}" ${L.flex && L.flex.name===p.name ? 'selected':''}>${p.name} (${p.pos}, ${p.pts})</option>`).join("")
-      : `<option value="">no eligible bench players</option>`;
+    const rows = L.slots.map((slot,i)=>{
+      const options = slot.pool.length
+        ? slot.pool.map(p=>`<option value="${p.name.replace(/"/g,'&quot;')}" ${slot.player && slot.player.name===p.name ? 'selected':''}>${p.name} (${p.pos}, ${p.pts})</option>`).join("")
+        : `<option value="">empty</option>`;
+      return `<div class="slotrow">
+        <span class="slotlabel">${slot.label}</span>
+        <select class="lineupSelect" data-team="${t.id}" data-slotkey="${slot.key}" data-slotindex="${i}">${options}</select>
+        <span class="slotpts">${slot.player ? slot.player.pts : "-"}</span>
+      </div>`;
+    }).join("");
     return `<div class="startercard">
       <h4>${t.name}${t.id===MY_TEAM_ID?' <span style="color:var(--gold);font-size:10px;">(you)</span>':''}</h4>
-      ${slotRow("QB", L.qb)}
-      ${slotRow("RB", L.rb1)}
-      ${slotRow("RB", L.rb2)}
-      ${slotRow("WR", L.wr1)}
-      ${slotRow("WR", L.wr2)}
-      ${slotRow("TE", L.te1)}
-      <div class="slotrow">
-        <span class="slotlabel">FLEX</span>
-        <select class="flexSelect" data-team="${t.id}">${flexOptions}</select>
-        <span class="slotpts">${L.flex ? L.flex.pts : "-"}</span>
-      </div>
-      ${slotRow("K", L.k)}
-      ${slotRow("DST", L.dst)}
+      ${rows}
       <div class="starter-totals">
         <span>Starters: <b style="color:var(--gold)">${Math.round(L.starterTotal)}</b></span>
         <span>Bench: <b>${Math.round(L.benchTotal)}</b> <span style="color:var(--sub)">(${L.bench.length})</span></span>
@@ -548,10 +537,10 @@ function renderStarters(){
     </div>`;
   }).join("");
 
-  el.querySelectorAll('.flexSelect').forEach(sel=>{
+  el.querySelectorAll('.lineupSelect').forEach(sel=>{
     sel.onchange = ()=>{
       const t = teams.find(tt=>tt.id===parseInt(sel.dataset.team));
-      t.flexId = sel.value || null;
+      t[sel.dataset.slotkey] = sel.value || null;
       renderStarters();
       saveState();
     };
@@ -587,7 +576,9 @@ function setStatus(msg){
 function saveState(){
   try{
     const state = {
-      teams: teams.map(t=>({id:t.id, name:t.name, nickname:t.nickname||"", flexId:t.flexId||null})),
+      teams: teams.map(t=>({id:t.id, name:t.name, nickname:t.nickname||"",
+        qbId:t.qbId||null, rb1Id:t.rb1Id||null, rb2Id:t.rb2Id||null, wr1Id:t.wr1Id||null,
+        wr2Id:t.wr2Id||null, teId:t.teId||null, flexId:t.flexId||null, kId:t.kId||null, dstId:t.dstId||null})),
       owners: players.filter(p=>p.ownerId!==null).map(p=>({name:p.name, ownerId:p.ownerId})),
       pts: players.map(p=>({name:p.name, pts:p.pts})),
     };
@@ -603,7 +594,12 @@ function loadState(){
     const state = JSON.parse(raw);
     state.teams.forEach(st=>{
       const t = teams.find(tt=>tt.id===st.id);
-      if(t){ t.name = st.name; t.nickname = st.nickname||""; t.flexId = st.flexId||null; }
+      if(t){
+        t.name = st.name; t.nickname = st.nickname||"";
+        t.qbId = st.qbId||null; t.rb1Id = st.rb1Id||null; t.rb2Id = st.rb2Id||null;
+        t.wr1Id = st.wr1Id||null; t.wr2Id = st.wr2Id||null; t.teId = st.teId||null;
+        t.flexId = st.flexId||null; t.kId = st.kId||null; t.dstId = st.dstId||null;
+      }
     });
 
     // only trust saved point values if they were saved under the current points version.
@@ -892,7 +888,10 @@ async function loadLeague(){
 
   // switching leagues means this browser's old picks/team names/flex choices no longer apply
   players.forEach(p=>{ p.ownerId = null; });
-  teams.forEach((t,i)=>{ t.name = "Team "+(i+1); t.nickname = ""; t.picks = []; t.flexId = null; });
+  teams.forEach((t,i)=>{
+    t.name = "Team "+(i+1); t.nickname = ""; t.picks = [];
+    t.qbId = t.rb1Id = t.rb2Id = t.wr1Id = t.wr2Id = t.teId = t.flexId = t.kId = t.dstId = null;
+  });
   MY_TEAM_ID = null;
   localStorage.removeItem(VIEWER_KEY);
   localStorage.removeItem(STORAGE_KEY);
