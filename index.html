@@ -37,7 +37,7 @@
     position:sticky;top:0;background:var(--panel);cursor:pointer;white-space:nowrap;}
   tbody td{padding:6px 6px;border-bottom:1px solid #223429;}
   tbody tr:hover{background:var(--panel2);}
-  .scroll{max-height:600px;overflow-y:auto;}
+  .scroll{height:600px;overflow-y:auto;}
   .postag{font-size:10.5px;padding:2px 6px;border-radius:4px;font-weight:600;}
   .QB{background:#4a2f6b;color:#dcc8ff;} .RB{background:#1d5c3f;color:#b8f0d4;}
   .WR{background:#1d4a6b;color:#bfe0ff;} .TE{background:#7a4a12;color:#ffd9a0;}
@@ -48,13 +48,15 @@
   .teamcard{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:10px;}
   .startercard{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;}
   .startercard h4{margin:0 0 8px;font-size:13px;color:var(--gold);}
-  .slotrow{display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:4px 0;border-bottom:1px solid #223429;gap:6px;}
+  .slotrow{padding:5px 0;border-bottom:1px solid #223429;}
   .slotrow:last-of-type{border-bottom:none;}
-  .slotlabel{color:var(--sub);width:36px;flex-shrink:0;font-weight:600;}
-  .slotname{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .slotpts{color:var(--sub);flex-shrink:0;}
-  .slotempty{color:var(--sub);font-style:italic;}
-  .flexSelect{background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:5px;padding:2px 4px;font-size:11px;flex:1;min-width:0;}
+  .slottop{display:flex;justify-content:space-between;align-items:center;font-size:11px;margin-bottom:3px;}
+  .slotlabel{color:var(--sub);font-weight:700;letter-spacing:.3px;}
+  .slotpts{color:var(--gold);font-weight:600;}
+  .lineupSelect{background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:5px;
+    padding:5px 6px;font-size:12px;width:100%;box-sizing:border-box;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;}
+  .lineupSelect:hover{border-color:var(--gold-dim);}
   .starter-totals{display:flex;justify-content:space-between;margin-top:10px;padding-top:8px;border-top:1px solid var(--line);font-size:12px;}
   .teamcard.me{border-color:var(--gold);background:#22381f;}
   .teamhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:8px;flex-wrap:wrap;}
@@ -79,6 +81,7 @@
 <div class="wrap">
   <h1>2026 Fantasy Draft Tracker</h1>
   <div class="sub">10-team snake draft &middot; auto-tracks ADP and projected points per team &middot; saves locally in this browser</div>
+  <div style="margin:-4px 0 14px;"><a href="season.html" style="color:var(--gold);text-decoration:none;font-size:13px;">&rarr; Go to Season Tracker (standings, weekly scores)</a></div>
 
   <div class="clock" id="clock"></div>
   <div id="leagueBar" style="display:flex;gap:8px;align-items:center;margin:-8px 0 8px;font-size:12px;color:var(--sub);flex-wrap:wrap;">
@@ -135,7 +138,7 @@
   <div class="panel" style="margin-top:18px;">
     <h2>Starting Lineups</h2>
     <div class="legend" style="margin-bottom:12px;">Auto-filled by best available player at each slot (QB, 2 RB, 2 WR, TE, K, DST). Pick your own FLEX from what's left over — everyone else on the roster counts as bench.</div>
-    <div id="starters" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;"></div>
+    <div id="starters" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;"></div>
   </div>
 </div>
 
@@ -522,9 +525,8 @@ function renderStarters(){
         ? slot.pool.map(p=>`<option value="${p.name.replace(/"/g,'&quot;')}" ${slot.player && slot.player.name===p.name ? 'selected':''}>${p.name} (${p.pos}, ${p.pts})</option>`).join("")
         : `<option value="">empty</option>`;
       return `<div class="slotrow">
-        <span class="slotlabel">${slot.label}</span>
+        <div class="slottop"><span class="slotlabel">${slot.label}</span><span class="slotpts">${slot.player ? slot.player.pts : "-"}</span></div>
         <select class="lineupSelect" data-team="${t.id}" data-slotkey="${slot.key}" data-slotindex="${i}">${options}</select>
-        <span class="slotpts">${slot.player ? slot.player.pts : "-"}</span>
       </div>`;
     }).join("");
     return `<div class="startercard">
@@ -580,7 +582,7 @@ function saveState(){
         qbId:t.qbId||null, rb1Id:t.rb1Id||null, rb2Id:t.rb2Id||null, wr1Id:t.wr1Id||null,
         wr2Id:t.wr2Id||null, teId:t.teId||null, flexId:t.flexId||null, kId:t.kId||null, dstId:t.dstId||null})),
       owners: players.filter(p=>p.ownerId!==null).map(p=>({name:p.name, ownerId:p.ownerId})),
-      pts: players.map(p=>({name:p.name, pts:p.pts})),
+      pts: players.map(p=>({name:p.name, pos:p.pos, team:p.team, pts:p.pts})),
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     localStorage.setItem(POINTS_VERSION_KEY, String(POINTS_VERSION));
