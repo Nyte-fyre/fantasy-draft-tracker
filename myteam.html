@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8F%88%3C/text%3E%3C/svg%3E">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0f1e17">
+<title>My Team</title>
+<style>
+  :root{
+    --bg:#0f1e17; --panel:#16281f; --panel2:#1c3226; --line:#2c4436;
+    --gold:#d4af37; --gold-dim:#a8862c; --text:#eef2ee; --sub:#9fb3a6;
+    --danger:#c65b4e; --accent:#4f9d78;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--text);}
+  .wrap{max-width:900px;margin:0 auto;padding:20px;}
+  h1{font-size:22px;margin:0 0 4px;}
+  h2{font-size:15px;margin:0 0 10px;color:var(--gold);}
+  .sub{color:var(--sub);font-size:13px;margin-bottom:10px;}
+  a{color:var(--gold);}
+  .pagenav{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;}
+  .navpill{background:var(--panel2);border:1px solid var(--line);color:var(--text);
+    text-decoration:none;padding:6px 16px;border-radius:20px;font-size:12px;font-weight:600;
+    transition:border-color .15s,background .15s;}
+  .navpill:hover{border-color:var(--gold-dim);}
+  .navpill.active{background:var(--gold);color:#1a1a1a;border-color:var(--gold);cursor:default;pointer-events:none;}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:18px;}
+  select,button{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:6px 10px;font-size:13px;}
+  button{background:var(--accent);color:#fff;border:none;cursor:pointer;font-weight:600;}
+  button:hover{background:#3d8763;}
+  .controls{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;}
+  .statusline{font-size:12px;color:var(--sub);}
+  .empty-state{color:var(--sub);font-size:14px;text-align:center;padding:40px 20px;}
+  .matchup{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:14px;
+    background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:16px;}
+  .side{text-align:center;} .side.winning .teamname{color:var(--gold);}
+  .teamname{font-weight:700;font-size:15px;margin-bottom:4px;}
+  .score{font-size:26px;font-weight:700;}
+  .vs{color:var(--sub);font-size:12px;font-weight:700;}
+  .slotrow{padding:5px 0;border-bottom:1px solid #223429;display:flex;justify-content:space-between;align-items:center;font-size:13px;}
+  .slotrow:last-child{border-bottom:none;}
+  .slotlabel{color:var(--sub);font-weight:700;width:44px;}
+  .postag{font-size:9px;padding:1px 5px;border-radius:4px;font-weight:600;margin-right:5px;}
+  .QB{background:#4a2f6b;color:#dcc8ff;} .RB{background:#1d5c3f;color:#b8f0d4;}
+  .WR{background:#1d4a6b;color:#bfe0ff;} .TE{background:#7a4a12;color:#ffd9a0;}
+  .DST{background:#5c1f1f;color:#ffc4c4;} .K{background:#3d3d1a;color:#eef0b8;}
+  .injbadge{font-size:10px;padding:2px 7px;border-radius:10px;font-weight:700;text-transform:uppercase;}
+  .inj-Questionable{background:#5c4a1f;color:#ffe6a0;} .inj-Doubtful{background:#5c2f1f;color:#ffc9a0;}
+  .inj-Out{background:#5c1f1f;color:#ffc4c4;} .inj-IR{background:#3a1f5c;color:#dcc4ff;}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  thead th{text-align:left;color:var(--sub);font-weight:500;padding:6px;border-bottom:1px solid var(--line);}
+  tbody td{padding:6px;border-bottom:1px solid #223429;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>My Team</h1>
+  <div class="sub">Your lineup, this week's matchup, and your own injury report in one place</div>
+  <div class="pagenav">
+    <a href="index.html" class="navpill">Home</a>
+    <a href="draft.html" class="navpill">Draft</a>
+    <a href="season.html" class="navpill">Season</a>
+    <a href="week.html" class="navpill">This Week</a>
+    <a href="news.html" class="navpill">News</a>
+    <a href="myteam.html" class="navpill active">My Team</a>
+    <a href="trade.html" class="navpill">Trade Analyzer</a>
+    <a href="rules.html" class="navpill">Rules</a>
+    <a href="watchlist.html" class="navpill">Watchlist</a>
+  </div>
+
+  <div id="teamPicker" class="controls"></div>
+  <div class="controls">
+    <button id="syncBtn">Sync</button>
+    <span class="statusline" id="syncStatus"></span>
+  </div>
+
+  <div id="content"></div>
+</div>
+
+<script>
+const DRAFT_STORAGE_KEY = "ff-2026-draft-state";
+const SLEEPER_DRAFT_ID_KEY = "ff-2026-sleeper-draft-id";
+const DEFAULT_SLEEPER_DRAFT_ID = "1378473537542565888";
+const PLAYERS_CACHE_KEY = "ff-2026-sleeper-players-cache";
+const PLAYERS_CACHE_TS_KEY = "ff-2026-sleeper-players-cache-ts";
+const VIEWER_KEY = "ff-2026-viewer-team"; // same key the Draft Tracker uses — shared "who am I" choice
+const MYTEAM_CACHE_KEY = "ff-2026-myteam-cache";
+
+function getDraftId(){ return localStorage.getItem(SLEEPER_DRAFT_ID_KEY) || DEFAULT_SLEEPER_DRAFT_ID; }
+
+const LINEUP_SLOTS = [
+  {key:"qbId",label:"QB",positions:["QB"]}, {key:"rb1Id",label:"RB",positions:["RB"]},
+  {key:"rb2Id",label:"RB",positions:["RB"]}, {key:"wr1Id",label:"WR",positions:["WR"]},
+  {key:"wr2Id",label:"WR",positions:["WR"]}, {key:"teId",label:"TE",positions:["TE"]},
+  {key:"flexId",label:"FLEX",positions:["RB","WR","TE"]}, {key:"kId",label:"K",positions:["K"]},
+  {key:"dstId",label:"DST",positions:["DST"]},
+];
+
+function loadDraftSharedData(){
+  try{
+    const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
+    if(!raw) return null;
+    const state = JSON.parse(raw);
+    const players = (state.pts||[]).map(p=>({name:p.name, pos:p.pos, team:p.team, pts:p.pts, adp:p.adp||999, ownerId:null}));
+    const byName = {}; players.forEach(p=>byName[p.name]=p);
+    (state.owners||[]).forEach(o=>{ if(byName[o.name]) byName[o.name].ownerId = o.ownerId; });
+    const teams = (state.teams||[]).map(t=>({...t}));
+    return {players, teams};
+  }catch(e){ return null; }
+}
+
+function computeLineup(team, players){
+  const roster = players.filter(p=>p.ownerId===team.id);
+  const claimedNames = new Set(); const claims = new Array(LINEUP_SLOTS.length).fill(null);
+  LINEUP_SLOTS.forEach((def,i)=>{
+    const chosenName = team[def.key];
+    if(!chosenName || claimedNames.has(chosenName)) return;
+    const candidate = roster.find(p=>p.name===chosenName && def.positions.includes(p.pos));
+    if(candidate){ claims[i]=candidate; claimedNames.add(candidate.name); }
+  });
+  LINEUP_SLOTS.forEach((def,i)=>{
+    if(claims[i]) return;
+    const best = roster.filter(p=>def.positions.includes(p.pos) && !claimedNames.has(p.name)).sort((a,b)=>b.pts-a.pts)[0];
+    if(best){ claims[i]=best; claimedNames.add(best.name); }
+  });
+  const slots = LINEUP_SLOTS.map((def,i)=>({...def, player:claims[i]}));
+  const bench = roster.filter(p=>!claimedNames.has(p.name));
+  const starterTotal = slots.reduce((s,slot)=>s+(slot.player?slot.player.pts:0),0);
+  return {slots, bench, starterTotal};
+}
+
+function renderTeamPicker(){
+  const draftData = loadDraftSharedData();
+  const el = document.getElementById('teamPicker');
+  if(!draftData || !draftData.teams.length){ el.innerHTML = ""; return; }
+  const saved = localStorage.getItem(VIEWER_KEY);
+  el.innerHTML = `<span>Viewing as:</span> <select id="teamSelect">
+    <option value="">Select your team...</option>
+    ${draftData.teams.map(t=>`<option value="${t.id}" ${saved==String(t.id)?'selected':''}>${t.name}</option>`).join("")}
+  </select>`;
+  document.getElementById('teamSelect').onchange = (e)=>{
+    if(e.target.value) localStorage.setItem(VIEWER_KEY, e.target.value);
+    else localStorage.removeItem(VIEWER_KEY);
+    render();
+  };
+}
+
+async function fetchAllSleeperPlayers(){
+  const cachedTs = localStorage.getItem(PLAYERS_CACHE_TS_KEY);
+  if(cachedTs && (Date.now() - parseInt(cachedTs)) < 20*60*60*1000){
+    try{ return JSON.parse(localStorage.getItem(PLAYERS_CACHE_KEY)); }catch(e){}
+  }
+  const res = await fetch("https://api.sleeper.app/v1/players/nfl");
+  if(!res.ok) throw new Error("players fetch failed");
+  const data = await res.json();
+  try{
+    localStorage.setItem(PLAYERS_CACHE_KEY, JSON.stringify(data));
+    localStorage.setItem(PLAYERS_CACHE_TS_KEY, String(Date.now()));
+  }catch(e){}
+  return data;
+}
+
+function loadMyTeamCache(){ try{ return JSON.parse(localStorage.getItem(MYTEAM_CACHE_KEY)); }catch(e){ return null; } }
+function saveMyTeamCache(d){ try{ localStorage.setItem(MYTEAM_CACHE_KEY, JSON.stringify(d)); }catch(e){} }
+
+async function syncMyTeam(){
+  const btn = document.getElementById('syncBtn');
+  const statusEl = document.getElementById('syncStatus');
+  const myTeamId = parseInt(localStorage.getItem(VIEWER_KEY));
+  if(!myTeamId){ statusEl.textContent = "Pick your team above first."; return; }
+
+  btn.disabled = true;
+  statusEl.textContent = "Checking season status...";
+  try{
+    const stateRes = await fetch("https://api.sleeper.app/v1/state/nfl");
+    const nflState = stateRes.ok ? await stateRes.json() : {week:1, season_type:"pre"};
+    const seasonStarted = nflState.season_type === "regular";
+    const currentWeek = seasonStarted ? Math.max(1, nflState.week||1) : 0;
+
+    const draftId = getDraftId();
+    const draftRes = await fetch(`https://api.sleeper.app/v1/draft/${draftId}`);
+    if(!draftRes.ok) throw new Error("Could not load draft/league info");
+    const draftInfo = await draftRes.json();
+    const leagueId = draftInfo.league_id;
+    const slotToRoster = draftInfo.slot_to_roster_id || {};
+    if(!leagueId) throw new Error("No league_id found for this draft");
+    const teamIdByRosterId = {};
+    Object.entries(slotToRoster).forEach(([slot,rid])=>{ teamIdByRosterId[rid]=parseInt(slot); });
+    const rosterIdOfMyTeam = Object.entries(slotToRoster).find(([slot])=>parseInt(slot)===myTeamId);
+    const myRosterId = rosterIdOfMyTeam ? rosterIdOfMyTeam[1] : null;
+
+    statusEl.textContent = "Loading rosters...";
+    const [rostersRes, usersRes] = await Promise.all([
+      fetch(`https://api.sleeper.app/v1/league/${leagueId}/rosters`),
+      fetch(`https://api.sleeper.app/v1/league/${leagueId}/users`),
+    ]);
+    const rosters = rostersRes.ok ? await rostersRes.json() : [];
+    const users = usersRes.ok ? await usersRes.json() : [];
+    const ownerIdToName = {};
+    users.forEach(u=>{ ownerIdToName[u.user_id] = (u.metadata && u.metadata.team_name) || u.display_name; });
+    const rosterMeta = {};
+    rosters.forEach(r=>{ rosterMeta[r.roster_id] = {name: ownerIdToName[r.owner_id] || ("Roster "+r.roster_id), playerIds: r.players||[]}; });
+
+    let matchup = null;
+    if(seasonStarted && myRosterId){
+      statusEl.textContent = `Loading week ${currentWeek} matchup...`;
+      const mRes = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/matchups/${currentWeek}`);
+      const matchups = mRes.ok ? await mRes.json() : [];
+      const mine = matchups.find(m=>m.roster_id===myRosterId);
+      if(mine && mine.matchup_id!=null){
+        const opp = matchups.find(m=>m.matchup_id===mine.matchup_id && m.roster_id!==myRosterId);
+        if(opp){
+          matchup = {
+            me: {name: rosterMeta[myRosterId] ? rosterMeta[myRosterId].name : "Me", pts: mine.points||0},
+            opp: {name: rosterMeta[opp.roster_id] ? rosterMeta[opp.roster_id].name : "Opponent", pts: opp.points||0},
+          };
+        }
+      }
+    }
+
+    statusEl.textContent = "Checking injuries on your roster...";
+    const allPlayers = await fetchAllSleeperPlayers();
+    const myPlayerIds = (rosterMeta[myRosterId] && rosterMeta[myRosterId].playerIds) || [];
+    const injuries = myPlayerIds.map(pid=>allPlayers[pid]).filter(p=>p && p.injury_status).map(p=>({
+      name: p.full_name || (p.first_name+" "+p.last_name), pos: p.position, team: p.team,
+      status: p.injury_status, note: p.injury_body_part||"",
+    }));
+
+    saveMyTeamCache({seasonStarted, currentWeek, matchup, injuries, syncedAt: Date.now()});
+    statusEl.textContent = "Synced";
+    render();
+  }catch(e){
+    statusEl.textContent = "Sync failed: " + e.message;
+    console.error(e);
+  }finally{
+    btn.disabled = false;
+    setTimeout(()=>{ if(statusEl.textContent==="Synced") statusEl.textContent=""; }, 3000);
+  }
+}
+
+function render(){
+  renderTeamPicker();
+  const draftData = loadDraftSharedData();
+  const el = document.getElementById('content');
+  const myTeamId = parseInt(localStorage.getItem(VIEWER_KEY));
+
+  if(!draftData || !draftData.teams.length){
+    el.innerHTML = `<div class="panel"><div class="empty-state">No draft data found yet. Open the <a href="draft.html">Draft Tracker</a> first.</div></div>`;
+    return;
+  }
+  if(!myTeamId){
+    el.innerHTML = `<div class="panel"><div class="empty-state">Pick your team above to see your dashboard.</div></div>`;
+    return;
+  }
+  const myTeam = draftData.teams.find(t=>t.id===myTeamId);
+  if(!myTeam){
+    el.innerHTML = `<div class="panel"><div class="empty-state">Couldn't find that team — try re-selecting it above.</div></div>`;
+    return;
+  }
+
+  const L = computeLineup(myTeam, draftData.players);
+  const lineupRows = L.slots.map(slot=>`
+    <div class="slotrow"><span class="slotlabel">${slot.label}</span>
+      <span>${slot.player ? `<span class="postag ${slot.player.pos}">${slot.player.pos}</span>${slot.player.name}` : '<span style="color:var(--sub);font-style:italic;">empty</span>'}</span>
+      <span style="color:var(--gold);">${slot.player ? slot.player.pts : "-"}</span>
+    </div>`).join("");
+  const benchRows = L.bench.length
+    ? L.bench.map(p=>`<div class="slotrow"><span><span class="postag ${p.pos}">${p.pos}</span>${p.name}</span><span style="color:var(--sub);">${p.pts}</span></div>`).join("")
+    : `<div style="color:var(--sub);font-size:13px;">No bench players</div>`;
+
+  const cache = loadMyTeamCache();
+  let matchupHtml = `<div class="empty-state">Click <b>Sync</b> above to load this week's matchup and injury report.</div>`;
+  let injuryHtml = "";
+  if(cache){
+    if(!cache.seasonStarted){
+      matchupHtml = `<div class="empty-state">Regular season hasn't started yet — no live matchup to show.</div>`;
+    } else if(cache.matchup){
+      const m = cache.matchup;
+      const meWinning = m.me.pts > m.opp.pts;
+      matchupHtml = `<div class="matchup">
+        <div class="side ${meWinning?'winning':''}"><div class="teamname">${m.me.name} (you)</div><div class="score">${m.me.pts.toFixed(1)}</div></div>
+        <div class="vs">VS</div>
+        <div class="side ${!meWinning && m.opp.pts>m.me.pts?'winning':''}"><div class="teamname">${m.opp.name}</div><div class="score">${m.opp.pts.toFixed(1)}</div></div>
+      </div>`;
+    } else {
+      matchupHtml = `<div class="empty-state">No matchup found for this week.</div>`;
+    }
+    injuryHtml = cache.injuries.length
+      ? `<table><thead><tr><th>Player</th><th>Status</th><th>Note</th></tr></thead><tbody>
+          ${cache.injuries.map(p=>`<tr>
+            <td><span class="postag ${p.pos}">${p.pos}</span>${p.name} <span style="color:var(--sub);font-size:11px;">${p.team}</span></td>
+            <td><span class="injbadge inj-${p.status}">${p.status}</span></td>
+            <td style="color:var(--sub);">${p.note||"-"}</td>
+          </tr>`).join("")}
+        </tbody></table>`
+      : `<div style="color:var(--sub);font-size:13px;">No injuries reported on your roster</div>`;
+  }
+
+  el.innerHTML = `
+    <div class="panel">
+      <h2>This Week's Matchup</h2>
+      ${matchupHtml}
+    </div>
+    <div class="panel">
+      <h2>Starting Lineup <span style="color:var(--sub);font-weight:400;font-size:11px;">(${Math.round(L.starterTotal)} pts)</span></h2>
+      ${lineupRows}
+    </div>
+    <div class="panel">
+      <h2>Bench</h2>
+      ${benchRows}
+    </div>
+    <div class="panel">
+      <h2>Your Injury Report</h2>
+      ${injuryHtml || '<div style="color:var(--sub);font-size:13px;">Sync to check for injuries.</div>'}
+    </div>
+  `;
+}
+
+document.getElementById('syncBtn').onclick = syncMyTeam;
+render();
+if(localStorage.getItem(VIEWER_KEY)) syncMyTeam();
+</script>
+</body>
+</html>
