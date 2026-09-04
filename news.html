@@ -2,6 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8F%88%3C/text%3E%3C/svg%3E">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0f1e17">
 <title>News</title>
 <style>
   :root{
@@ -43,6 +46,8 @@
   .inj-IR{background:#3a1f5c;color:#dcc4ff;}
   .inj-PUP{background:#3a1f5c;color:#dcc4ff;}
   .trendcount{color:var(--gold);font-weight:700;}
+  .newbadge{background:var(--gold);color:#1a1a1a;font-size:9px;font-weight:800;padding:1px 6px;
+    border-radius:8px;margin-left:6px;letter-spacing:.3px;vertical-align:middle;}
   .scroll{max-height:420px;overflow-y:auto;}
 </style>
 </head>
@@ -56,6 +61,10 @@
     <a href="season.html" class="navpill">Season</a>
     <a href="week.html" class="navpill">This Week</a>
     <a href="news.html" class="navpill active">News</a>
+    <a href="myteam.html" class="navpill">My Team</a>
+    <a href="trade.html" class="navpill">Trade Analyzer</a>
+    <a href="rules.html" class="navpill">Rules</a>
+    <a href="watchlist.html" class="navpill">Watchlist</a>
   </div>
 
   <div class="controls">
@@ -73,6 +82,15 @@ const DEFAULT_SLEEPER_DRAFT_ID = "1378473537542565888";
 const PLAYERS_CACHE_KEY = "ff-2026-sleeper-players-cache";
 const PLAYERS_CACHE_TS_KEY = "ff-2026-sleeper-players-cache-ts";
 const NEWS_CACHE_KEY = "ff-2026-news-cache";
+const FAVORITES_KEY = "ff-2026-watchlist"; // shared across pages — array of favorited player names
+function loadFavorites(){ try{ return JSON.parse(localStorage.getItem(FAVORITES_KEY))||[]; }catch(e){ return []; } }
+function toggleFavorite(name){
+  const favs = loadFavorites();
+  const idx = favs.indexOf(name);
+  if(idx===-1) favs.push(name); else favs.splice(idx,1);
+  try{ localStorage.setItem(FAVORITES_KEY, JSON.stringify(favs)); }catch(e){}
+  return favs;
+}
 
 function getDraftId(){ return localStorage.getItem(SLEEPER_DRAFT_ID_KEY) || DEFAULT_SLEEPER_DRAFT_ID; }
 
@@ -167,6 +185,17 @@ async function syncNews(){
       trendingDrops: mapTrend(dropTrend),
       syncedAt: Date.now(),
     };
+
+    // mark anything that wasn't present last sync as new, so it stands out at a glance
+    // until the next sync — read the OLD cache before it gets overwritten below.
+    const prev = loadNewsCache();
+    const prevInjuryNames = new Set((prev && prev.injuries || []).map(p=>p.name));
+    const prevAddNames = new Set((prev && prev.trendingAdds || []).map(p=>p.name));
+    const prevDropNames = new Set((prev && prev.trendingDrops || []).map(p=>p.name));
+    newsData.injuries.forEach(p=>{ p.isNew = prev ? !prevInjuryNames.has(p.name) : false; });
+    newsData.trendingAdds.forEach(p=>{ p.isNew = prev ? !prevAddNames.has(p.name) : false; });
+    newsData.trendingDrops.forEach(p=>{ p.isNew = prev ? !prevDropNames.has(p.name) : false; });
+
     saveNewsCache(newsData);
     statusEl.textContent = "Synced";
     render();
@@ -187,46 +216,60 @@ function render(){
     return;
   }
 
+  const searchLink = name => `<a href="https://www.google.com/search?q=${encodeURIComponent(name+" fantasy football news")}&tbm=nws" target="_blank" rel="noopener" style="font-size:11px;white-space:nowrap;">Search &rarr;</a>`;
+
+  const favSet = new Set(loadFavorites());
+  const starHtml = name => {
+    const isFav = favSet.has(name);
+    return `<span class="favStar" data-name="${name.replace(/"/g,'&quot;')}" style="cursor:pointer;color:${isFav?'var(--gold)':'var(--sub)'};margin-right:6px;">${isFav?'★':'☆'}</span>`;
+  };
+
   const injRows = data.injuries.map(p=>`
     <tr>
-      <td><span class="postag ${p.pos}">${p.pos}</span>${p.name} <span style="color:var(--sub);font-size:11px;">${p.team}</span></td>
+      <td>${starHtml(p.name)}<span class="postag ${p.pos}">${p.pos}</span>${p.name}${p.isNew?'<span class="newbadge">NEW</span>':''} <span style="color:var(--sub);font-size:11px;">${p.team}</span></td>
       <td><span class="injbadge inj-${p.status}">${p.status}</span></td>
       <td style="color:var(--sub);">${p.note||"-"}</td>
       <td style="color:var(--gold);">${p.fantasyTeam}</td>
+      <td>${searchLink(p.name)}</td>
     </tr>`).join("");
 
   const trendRow = t => `
     <tr>
-      <td><span class="postag ${t.pos}">${t.pos}</span>${t.name} <span style="color:var(--sub);font-size:11px;">${t.team}</span></td>
+      <td>${starHtml(t.name)}<span class="postag ${t.pos}">${t.pos}</span>${t.name}${t.isNew?'<span class="newbadge">NEW</span>':''} <span style="color:var(--sub);font-size:11px;">${t.team}</span></td>
       <td class="trendcount">${t.count}</td>
       <td>${t.rosteredBy ? `<span style="color:var(--sub);">Rostered: ${t.rosteredBy}</span>` : '<span style="color:var(--accent);">Available</span>'}</td>
+      <td>${searchLink(t.name)}</td>
     </tr>`;
 
   el.innerHTML = `
     <div class="panel">
       <h2>Injury Report <span style="color:var(--sub);font-weight:400;font-size:11px;">(your league's rosters only)</span></h2>
       <div class="scroll"><table>
-        <thead><tr><th>Player</th><th>Status</th><th>Note</th><th>Fantasy Team</th></tr></thead>
-        <tbody>${injRows || '<tr><td colspan="4" style="color:var(--sub);">No reported injuries among rostered players</td></tr>'}</tbody>
+        <thead><tr><th>Player</th><th>Status</th><th>Note</th><th>Fantasy Team</th><th></th></tr></thead>
+        <tbody>${injRows || '<tr><td colspan="5" style="color:var(--sub);">No reported injuries among rostered players</td></tr>'}</tbody>
       </table></div>
     </div>
 
     <div class="panel">
       <h2>Trending Adds <span style="color:var(--sub);font-weight:400;font-size:11px;">(leaguewide on Sleeper, last 24h)</span></h2>
       <div class="scroll"><table>
-        <thead><tr><th>Player</th><th># Adds</th><th>Status</th></tr></thead>
-        <tbody>${data.trendingAdds.map(trendRow).join("") || '<tr><td colspan="3" style="color:var(--sub);">No data</td></tr>'}</tbody>
+        <thead><tr><th>Player</th><th># Adds</th><th>Status</th><th></th></tr></thead>
+        <tbody>${data.trendingAdds.map(trendRow).join("") || '<tr><td colspan="4" style="color:var(--sub);">No data</td></tr>'}</tbody>
       </table></div>
     </div>
 
     <div class="panel">
       <h2>Trending Drops <span style="color:var(--sub);font-weight:400;font-size:11px;">(leaguewide on Sleeper, last 24h)</span></h2>
       <div class="scroll"><table>
-        <thead><tr><th>Player</th><th># Drops</th><th>Status</th></tr></thead>
-        <tbody>${data.trendingDrops.map(trendRow).join("") || '<tr><td colspan="3" style="color:var(--sub);">No data</td></tr>'}</tbody>
+        <thead><tr><th>Player</th><th># Drops</th><th>Status</th><th></th></tr></thead>
+        <tbody>${data.trendingDrops.map(trendRow).join("") || '<tr><td colspan="4" style="color:var(--sub);">No data</td></tr>'}</tbody>
       </table></div>
     </div>
   `;
+
+  el.querySelectorAll('.favStar').forEach(star=>{
+    star.onclick = ()=>{ toggleFavorite(star.dataset.name); render(); };
+  });
 }
 
 document.getElementById('syncBtn').onclick = syncNews;
