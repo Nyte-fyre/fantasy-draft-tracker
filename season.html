@@ -2,6 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8F%88%3C/text%3E%3C/svg%3E">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0f1e17">
 <title>Season</title>
 <style>
   :root{
@@ -38,6 +41,8 @@
   .DST{background:#5c1f1f;color:#ffc4c4;} .K{background:#3d3d1a;color:#eef0b8;}
   .tradebadge{background:#4a2f6b;color:#dcc8ff;} .waiverbadge{background:#1d5c3f;color:#b8f0d4;} .fabadge{background:#1d4a6b;color:#bfe0ff;}
   .txnbadge{font-size:10px;padding:2px 7px;border-radius:10px;font-weight:700;text-transform:uppercase;}
+  .newbadge{background:var(--gold);color:#1a1a1a;font-size:9px;font-weight:800;padding:1px 6px;
+    border-radius:8px;margin-left:6px;letter-spacing:.3px;}
   .scroll{max-height:420px;overflow-y:auto;}
   .statusline{font-size:12px;color:var(--sub);}
   .pagenav{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;}
@@ -58,6 +63,10 @@
     <a href="season.html" class="navpill active">Season</a>
     <a href="week.html" class="navpill">This Week</a>
     <a href="news.html" class="navpill">News</a>
+    <a href="myteam.html" class="navpill">My Team</a>
+    <a href="trade.html" class="navpill">Trade Analyzer</a>
+    <a href="rules.html" class="navpill">Rules</a>
+    <a href="watchlist.html" class="navpill">Watchlist</a>
   </div>
 
   <div class="controls">
@@ -99,7 +108,7 @@ function loadDraftSharedData(){
     const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
     if(!raw) return null;
     const state = JSON.parse(raw);
-    const players = (state.pts||[]).map(p=>({name:p.name, pos:p.pos, team:p.team, pts:p.pts, ownerId:null}));
+    const players = (state.pts||[]).map(p=>({name:p.name, pos:p.pos, team:p.team, pts:p.pts, adp:p.adp||999, ownerId:null}));
     const byName = {};
     players.forEach(p=>byName[p.name]=p);
     (state.owners||[]).forEach(o=>{ if(byName[o.name]) byName[o.name].ownerId = o.ownerId; });
@@ -287,8 +296,10 @@ async function syncSeason(){
       currentWeek,
       weekMatchups,       // cached raw per-week data, reused on future syncs
       weekTransactions,   // cached raw per-week data, reused on future syncs
+      rosterIdToTeamId: teamIdByRosterId, // lets Power Rankings recompute at render time, no extra fetches
       standings: Object.entries(standings).map(([teamId,s])=>({teamId:parseInt(teamId), ...s})),
       transactions: allTxns.slice(0, 100).map(t=>({
+        id: t.transaction_id || (t.type+"_"+t.status_updated),
         type: t.type, week: t._week, status_updated: t.status_updated,
         rosterNames: (t.roster_ids||[]).map(rid=>(rosterMeta[rid]&&rosterMeta[rid].name)||("Roster "+rid)),
         adds: t.adds ? Object.entries(t.adds).map(([pid,rid])=>({player:nameOf(pid), team:(rosterMeta[rid]&&rosterMeta[rid].name)||("Roster "+rid)})) : [],
@@ -297,6 +308,11 @@ async function syncSeason(){
       availablePlayers,
       syncedAt: Date.now(),
     };
+
+    // mark transactions that weren't present last sync, so new activity stands out
+    const prevTxnIds = new Set((prevCache.transactions||[]).map(t=>t.id));
+    seasonData.transactions.forEach(t=>{ t.isNew = prevCache.transactions ? !prevTxnIds.has(t.id) : false; });
+
     saveSeasonCache(seasonData);
     statusEl.textContent = weeksReused>0
       ? `Synced \u2014 ${weeksFetched} week(s) fetched, ${weeksReused} reused from cache`
@@ -315,6 +331,147 @@ function txnBadgeClass(type){
   if(type==="trade") return "tradebadge";
   if(type==="waiver") return "waiverbadge";
   return "fabadge";
+}
+
+// ---------- Power Rankings ----------
+// Blends three signals into one score per team: record (40%), points-for relative
+// to the league (40%), and recent 3-week form vs their own season average (20%).
+// Record alone gets skewed by schedule luck; points-for is a steadier read on who's
+// actually good; the recent-form nudge lets a hot or cold streak move a team before
+// their record has caught up to reality.
+const POWER_HISTORY_KEY = "ff-2026-power-history";
+function loadPowerHistory(){ try{ return JSON.parse(localStorage.getItem(POWER_HISTORY_KEY))||{}; }catch(e){ return {}; } }
+function savePowerHistory(h){ try{ localStorage.setItem(POWER_HISTORY_KEY, JSON.stringify(h)); }catch(e){} }
+
+function computePowerRankings(seasonData, draftData){
+  const teamById = {};
+  draftData.teams.forEach(t=>teamById[t.id]=t);
+
+  // build each team's week-by-week point totals from the already-cached raw matchup data
+  const weeklyPts = {}; // teamId -> [pts week1, pts week2, ...] (completed weeks only)
+  const completedWeeks = Math.max(0, seasonData.currentWeek - 1);
+  for(let w=1; w<=completedWeeks; w++){
+    (seasonData.weekMatchups[w]||[]).forEach(m=>{
+      const teamId = seasonData.rosterIdToTeamId[m.roster_id];
+      if(!teamId) return;
+      (weeklyPts[teamId] = weeklyPts[teamId]||[]).push(m.points||0);
+    });
+  }
+
+  if(completedWeeks < 1) return {ready:false};
+
+  const standingsByTeam = {};
+  seasonData.standings.forEach(s=>standingsByTeam[s.teamId]=s);
+
+  const rows = Object.keys(weeklyPts).map(teamIdStr=>{
+    const teamId = parseInt(teamIdStr);
+    const pts = weeklyPts[teamId];
+    const games = pts.length;
+    const totalPF = pts.reduce((a,b)=>a+b,0);
+    const seasonAvg = totalPF / games;
+    const recentPts = pts.slice(-3); // last up-to-3 completed weeks
+    const recentAvg = recentPts.reduce((a,b)=>a+b,0) / recentPts.length;
+    const s = standingsByTeam[teamId] || {w:0,l:0,t:0};
+    const winPct = (s.w + s.t*0.5) / Math.max(1, s.w+s.l+s.t);
+    return {teamId, teamObj: teamById[teamId], totalPF, seasonAvg, recentAvg, winPct, games,
+      record: `${s.w}-${s.l}${s.t?`-${s.t}`:""}`};
+  }).filter(r=>r.teamObj);
+
+  // convert PF and momentum into 0-100 percentile ranks across the league (robust with small N)
+  const n = rows.length;
+  function percentileRank(arr, keyFn){
+    const sorted = [...arr].sort((a,b)=>keyFn(b)-keyFn(a)); // best first
+    const scoreOf = {};
+    sorted.forEach((r,i)=>{ scoreOf[r.teamId] = n>1 ? Math.round(((n-1-i)/(n-1))*100) : 100; });
+    return scoreOf;
+  }
+  const pfScore = percentileRank(rows, r=>r.totalPF);
+  const momentumScore = percentileRank(rows, r=>r.recentAvg - r.seasonAvg);
+
+  rows.forEach(r=>{
+    r.winPctScore = Math.round(r.winPct*100);
+    r.pfPercentile = pfScore[r.teamId];
+    r.momentumPercentile = momentumScore[r.teamId];
+    r.powerScore = Math.round(0.4*r.winPctScore + 0.4*r.pfPercentile + 0.2*r.momentumPercentile);
+  });
+  rows.sort((a,b)=>b.powerScore - a.powerScore);
+
+  // rank-based blurb: compare how a team's record rank compares to their scoring rank
+  const byWinRank = [...rows].sort((a,b)=>b.winPct-a.winPct);
+  const byPfRank = [...rows].sort((a,b)=>b.totalPF-a.totalPF);
+  rows.forEach(r=>{
+    const winRank = byWinRank.findIndex(x=>x.teamId===r.teamId)+1;
+    const pfRank = byPfRank.findIndex(x=>x.teamId===r.teamId)+1;
+    const momentumDelta = r.recentAvg - r.seasonAvg;
+    if(winRank <= pfRank - 2) r.blurb = "Winning more than the scoring suggests — living dangerously.";
+    else if(pfRank <= winRank - 2) r.blurb = "Outscoring their record — better than the standings show.";
+    else if(momentumDelta > 8) r.blurb = "Trending up over the last few weeks.";
+    else if(momentumDelta < -8) r.blurb = "Cooling off lately.";
+    else r.blurb = "Playing right around their true level.";
+  });
+
+  // movement arrows vs the last time this many weeks were completed
+  const history = loadPowerHistory();
+  const prevOrder = history[completedWeeks-1] || null;
+  rows.forEach((r,i)=>{
+    if(!prevOrder){ r.movement = null; return; }
+    const prevIdx = prevOrder.indexOf(r.teamId);
+    if(prevIdx===-1){ r.movement = null; return; }
+    r.movement = prevIdx - i; // positive = moved up
+  });
+  history[completedWeeks] = rows.map(r=>r.teamId);
+  savePowerHistory(history);
+
+  return {ready:true, rows, completedWeeks};
+}
+
+function movementArrow(m){
+  if(m===null || m===undefined) return '<span style="color:var(--sub);">–</span>';
+  if(m>0) return `<span style="color:var(--accent);">▲${m}</span>`;
+  if(m<0) return `<span style="color:var(--danger);">▼${Math.abs(m)}</span>`;
+  return '<span style="color:var(--sub);">–</span>';
+}
+
+let powerDetailsShown = false;
+
+function renderPowerRankingsPanel(seasonData, draftData){
+  const pr = computePowerRankings(seasonData, draftData);
+  if(!pr.ready){
+    return `<div class="panel">
+      <h2>Power Rankings</h2>
+      <div class="empty-state" style="padding:20px;">Needs at least 1 completed week to compute.</div>
+    </div>`;
+  }
+  const rows = pr.rows.map((r,i)=>`
+    <tr>
+      <td>${i+1}</td>
+      <td style="width:20px;">${movementArrow(r.movement)}</td>
+      <td>${r.teamObj.name}</td>
+      <td style="color:var(--gold);font-weight:700;">${r.powerScore}</td>
+      ${powerDetailsShown ? `
+        <td style="color:var(--sub);font-size:12px;">${r.record}</td>
+        <td style="color:var(--sub);font-size:12px;">${r.totalPF.toFixed(1)}</td>
+        <td style="color:var(--sub);font-size:12px;">${r.recentAvg.toFixed(1)}</td>
+      ` : ""}
+    </tr>
+    ${powerDetailsShown ? `<tr><td></td><td></td><td colspan="${5}" style="color:var(--sub);font-size:12px;font-style:italic;padding-top:0;">${r.blurb}</td></tr>` : ""}
+  `).join("");
+
+  return `<div class="panel">
+    <h2>Power Rankings <span style="color:var(--sub);font-weight:400;font-size:11px;">(through week ${pr.completedWeeks}) &mdash; blends record, points scored, and recent form</span></h2>
+    <div class="controls" style="margin-bottom:10px;">
+      <button id="powerToggleBtn" style="background:var(--panel2);border:1px solid var(--gold-dim);color:var(--gold);">
+        ${powerDetailsShown ? "Hide details" : "Show details"}
+      </button>
+    </div>
+    <table>
+      <thead><tr>
+        <th>#</th><th></th><th>Team</th><th>Score</th>
+        ${powerDetailsShown ? `<th>Record</th><th>Pts For</th><th>Last 3 Avg</th>` : ""}
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
 }
 
 function render(){
@@ -362,7 +519,7 @@ function render(){
         ...t.drops.map(d=>`<div style="color:var(--danger)">- ${d.player} <span style="color:var(--sub)">&larr; ${d.team}</span></div>`),
       ].join("");
       return `<tr>
-        <td><span class="txnbadge ${txnBadgeClass(t.type)}">${t.type}</span></td>
+        <td><span class="txnbadge ${txnBadgeClass(t.type)}">${t.type}</span>${t.isNew?'<span class="newbadge">NEW</span>':''}</td>
         <td>Wk ${t.week}</td>
         <td>${moves || '<span style="color:var(--sub)">-</span>'}</td>
       </tr>`;
@@ -384,6 +541,8 @@ function render(){
           <tbody>${standingsRows}</tbody>
         </table>
       </div>
+
+      ${renderPowerRankingsPanel(seasonData, draftData)}
 
       <div class="panel">
         <h2>Trade & Waiver History <span style="color:var(--sub);font-weight:400;font-size:11px;">(most recent first)</span></h2>
@@ -429,6 +588,9 @@ function render(){
       <div class="roster-grid">${rosterCards}</div>
     </div>
   `;
+
+  const powerToggle = document.getElementById('powerToggleBtn');
+  if(powerToggle) powerToggle.onclick = () => { powerDetailsShown = !powerDetailsShown; render(); };
 }
 
 document.getElementById('syncBtn').onclick = syncSeason;
