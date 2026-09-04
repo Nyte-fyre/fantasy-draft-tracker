@@ -2,6 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8F%88%3C/text%3E%3C/svg%3E">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0f1e17">
 <title>Draft</title>
 <style>
   :root{
@@ -93,6 +96,10 @@
     <a href="season.html" class="navpill">Season</a>
     <a href="week.html" class="navpill">This Week</a>
     <a href="news.html" class="navpill">News</a>
+    <a href="myteam.html" class="navpill">My Team</a>
+    <a href="trade.html" class="navpill">Trade Analyzer</a>
+    <a href="rules.html" class="navpill">Rules</a>
+    <a href="watchlist.html" class="navpill">Watchlist</a>
   </div>
 
   <div class="clock" id="clock"></div>
@@ -134,7 +141,7 @@
       <div class="postab" id="posTab"></div>
       <div class="scroll">
         <table>
-          <thead><tr><th>ADP</th><th>Player</th><th>Pos</th><th>Pts</th><th>vs top</th><th>Team</th><th>Draft</th></tr></thead>
+          <thead><tr><th></th><th>ADP</th><th>Player</th><th>Pos</th><th>Pts</th><th>vs top</th><th>Team</th><th>Draft</th></tr></thead>
           <tbody id="poolBody"></tbody>
         </table>
       </div>
@@ -390,6 +397,7 @@ function renderPool(){
     baselines[pos] = top ? top.pts : null;
     baselineNames[pos] = top ? top.name : null;
   });
+  const favSet = new Set(loadFavorites());
   let list = players.filter(p=>{
     if(activePos!=="ALL" && p.pos!==activePos) return false;
     if(q && !(p.name.toLowerCase().includes(q)||p.team.toLowerCase().includes(q))) return false;
@@ -415,7 +423,9 @@ function renderPool(){
         diffCell = `<span style="color:${diff>=0?'#8fd6ac':'#e08a80'}">${diff>0?'+':''}${diff}</span>`;
       }
     }
+    const isFav = favSet.has(p.name);
     return `<tr class="${taken?'taken-row':''}">
+      <td><span class="favStar" data-name="${p.name.replace(/"/g,'&quot;')}" style="cursor:pointer;color:${isFav?'var(--gold)':'var(--sub)'};">${isFav?'★':'☆'}</span></td>
       <td>${p.adp}</td>
       <td>${p.name} <span style="color:var(--sub);font-size:11px;">${p.team}</span></td>
       <td><span class="postag ${p.pos}">${p.pos}</span></td>
@@ -431,6 +441,10 @@ function renderPool(){
       </td>
     </tr>`;
   }).join("");
+
+  body.querySelectorAll('.favStar').forEach(star=>{
+    star.onclick = ()=>{ toggleFavorite(star.dataset.name); renderPool(); };
+  });
 
   body.querySelectorAll('.draftSel').forEach(sel=>{
     sel.onchange = ()=>{
@@ -597,6 +611,15 @@ renderPosTab();
 
 // ---------- persistence (localStorage — works in any browser, incl. GitHub Pages) ----------
 const STORAGE_KEY = "ff-2026-draft-state";
+const FAVORITES_KEY = "ff-2026-watchlist"; // shared across pages — array of favorited player names
+function loadFavorites(){ try{ return JSON.parse(localStorage.getItem(FAVORITES_KEY))||[]; }catch(e){ return []; } }
+function toggleFavorite(name){
+  const favs = loadFavorites();
+  const idx = favs.indexOf(name);
+  if(idx===-1) favs.push(name); else favs.splice(idx,1);
+  try{ localStorage.setItem(FAVORITES_KEY, JSON.stringify(favs)); }catch(e){}
+  return favs;
+}
 // Bump this whenever the baked-in point values change — it forces every visitor's browser
 // to drop its cached point numbers on next load and take the fresh ones from this file,
 // without anyone needing to clear storage manually. Picks/teams/nicknames are unaffected.
@@ -614,7 +637,7 @@ function saveState(){
         qbId:t.qbId||null, rb1Id:t.rb1Id||null, rb2Id:t.rb2Id||null, wr1Id:t.wr1Id||null,
         wr2Id:t.wr2Id||null, teId:t.teId||null, flexId:t.flexId||null, kId:t.kId||null, dstId:t.dstId||null})),
       owners: players.filter(p=>p.ownerId!==null).map(p=>({name:p.name, ownerId:p.ownerId})),
-      pts: players.map(p=>({name:p.name, pos:p.pos, team:p.team, pts:p.pts})),
+      pts: players.map(p=>({name:p.name, pos:p.pos, team:p.team, pts:p.pts, adp:p.adp})),
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     localStorage.setItem(POINTS_VERSION_KEY, String(POINTS_VERSION));
