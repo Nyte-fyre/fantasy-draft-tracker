@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8F%88%3C/text%3E%3C/svg%3E">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0f1e17">
+<title>Trade Analyzer</title>
+<style>
+  :root{
+    --bg:#0f1e17; --panel:#16281f; --panel2:#1c3226; --line:#2c4436;
+    --gold:#d4af37; --gold-dim:#a8862c; --text:#eef2ee; --sub:#9fb3a6;
+    --danger:#c65b4e; --accent:#4f9d78;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--text);}
+  .wrap{max-width:900px;margin:0 auto;padding:20px;}
+  h1{font-size:22px;margin:0 0 4px;}
+  h2{font-size:15px;margin:0 0 10px;color:var(--gold);}
+  .sub{color:var(--sub);font-size:13px;margin-bottom:10px;}
+  a{color:var(--gold);}
+  .pagenav{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;}
+  .navpill{background:var(--panel2);border:1px solid var(--line);color:var(--text);
+    text-decoration:none;padding:6px 16px;border-radius:20px;font-size:12px;font-weight:600;
+    transition:border-color .15s,background .15s;}
+  .navpill:hover{border-color:var(--gold-dim);}
+  .navpill.active{background:var(--gold);color:#1a1a1a;border-color:var(--gold);cursor:default;pointer-events:none;}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:18px;}
+  input[type=text],select{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:6px 8px;font-size:13px;width:100%;}
+  button{background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 12px;font-size:13px;cursor:pointer;font-weight:600;}
+  button:hover{background:#3d8763;}
+  button.remove{background:var(--danger);padding:2px 8px;font-size:11px;}
+  .sides{display:grid;grid-template-columns:1fr auto 1fr;gap:14px;align-items:start;}
+  .sidepanel{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:14px;}
+  .sidepanel h3{margin:0 0 10px;font-size:14px;color:var(--gold);}
+  .vsdivider{display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--sub);font-size:13px;padding-top:60px;}
+  .playerrow{display:flex;justify-content:space-between;align-items:center;background:var(--bg);border:1px solid var(--line);
+    border-radius:6px;padding:6px 10px;margin-bottom:6px;font-size:13px;}
+  .postag{font-size:9px;padding:1px 5px;border-radius:4px;font-weight:600;margin-right:5px;}
+  .QB{background:#4a2f6b;color:#dcc8ff;} .RB{background:#1d5c3f;color:#b8f0d4;}
+  .WR{background:#1d4a6b;color:#bfe0ff;} .TE{background:#7a4a12;color:#ffd9a0;}
+  .DST{background:#5c1f1f;color:#ffc4c4;} .K{background:#3d3d1a;color:#eef0b8;}
+  .sidetotal{margin-top:10px;padding-top:10px;border-top:1px solid var(--line);font-size:14px;font-weight:700;color:var(--gold);text-align:right;}
+  .verdict{text-align:center;font-size:15px;font-weight:600;padding:14px;background:var(--panel2);border-radius:10px;margin-top:14px;}
+  .addrow{display:flex;gap:6px;margin-top:8px;}
+  .empty-state{color:var(--sub);font-size:14px;text-align:center;padding:30px 20px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Trade Analyzer</h1>
+  <div class="sub">Compare two players head-to-head, or stack up a full trade &mdash; same tool either way</div>
+  <div class="pagenav">
+    <a href="index.html" class="navpill">Home</a>
+    <a href="draft.html" class="navpill">Draft</a>
+    <a href="season.html" class="navpill">Season</a>
+    <a href="week.html" class="navpill">This Week</a>
+    <a href="news.html" class="navpill">News</a>
+    <a href="myteam.html" class="navpill">My Team</a>
+    <a href="trade.html" class="navpill active">Trade Analyzer</a>
+    <a href="rules.html" class="navpill">Rules</a>
+    <a href="watchlist.html" class="navpill">Watchlist</a>
+  </div>
+
+  <div id="content"></div>
+</div>
+
+<script>
+const DRAFT_STORAGE_KEY = "ff-2026-draft-state";
+
+function loadPlayerPool(){
+  try{
+    const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
+    if(!raw) return null;
+    const state = JSON.parse(raw);
+    return (state.pts||[]).map(p=>({name:p.name, pos:p.pos, team:p.team, pts:p.pts, adp:p.adp||999}));
+  }catch(e){ return null; }
+}
+
+let pool = [];
+let sideA = []; // array of player names
+let sideB = [];
+
+function playerByName(name){ return pool.find(p=>p.name===name); }
+
+function sideTotal(side){ return side.reduce((s,name)=>{ const p=playerByName(name); return s+(p?p.pts:0); },0); }
+
+function renderSide(sideLetter, names){
+  const total = sideTotal(names);
+  const rows = names.length
+    ? names.map(name=>{
+        const p = playerByName(name);
+        if(!p) return "";
+        return `<div class="playerrow">
+          <span><span class="postag ${p.pos}">${p.pos}</span>${p.name} <span style="color:var(--sub);font-size:11px;">${p.team}</span></span>
+          <span style="display:flex;align-items:center;gap:8px;">
+            <span style="color:var(--gold);">${p.pts}</span>
+            <button class="remove" data-side="${sideLetter}" data-name="${p.name.replace(/"/g,'&quot;')}">x</button>
+          </span>
+        </div>`;
+      }).join("")
+    : `<div style="color:var(--sub);font-size:12px;font-style:italic;">No players added yet</div>`;
+
+  const options = pool
+    .filter(p=>!names.includes(p.name))
+    .sort((a,b)=>a.adp-b.adp || a.name.localeCompare(b.name))
+    .map(p=>`<option value="${p.name.replace(/"/g,'&quot;')}">${p.name} (${p.pos}, ${p.team})</option>`).join("");
+
+  return `<div class="sidepanel">
+    <h3>Side ${sideLetter}</h3>
+    ${rows}
+    <div class="addrow">
+      <select id="addSelect${sideLetter}"><option value="">+ Add a player...</option>${options}</select>
+    </div>
+    <div class="sidetotal">${total.toFixed(0)} pts</div>
+  </div>`;
+}
+
+function verdictText(totalA, totalB){
+  const diff = totalA - totalB;
+  const abs = Math.abs(diff);
+  if(abs < 5) return "Roughly even value — this is a fair trade either way.";
+  const winner = diff > 0 ? "Side A" : "Side B";
+  return `${winner} comes out ahead by about ${abs.toFixed(0)} projected points.`;
+}
+
+function render(){
+  const el = document.getElementById('content');
+  pool = loadPlayerPool() || [];
+  if(!pool.length){
+    el.innerHTML = `<div class="panel"><div class="empty-state">No player data found yet. Open the <a href="draft.html">Draft Tracker</a> first so there's a player pool to compare from.</div></div>`;
+    return;
+  }
+
+  const totalA = sideTotal(sideA), totalB = sideTotal(sideB);
+
+  el.innerHTML = `
+    <div class="panel">
+      <div class="sides">
+        ${renderSide("A", sideA)}
+        <div class="vsdivider">VS</div>
+        ${renderSide("B", sideB)}
+      </div>
+      ${(sideA.length && sideB.length) ? `<div class="verdict">${verdictText(totalA, totalB)}</div>` : ""}
+    </div>
+  `;
+
+  const selA = document.getElementById('addSelectA');
+  const selB = document.getElementById('addSelectB');
+  if(selA) selA.onchange = () => { if(selA.value){ sideA.push(selA.value); render(); } };
+  if(selB) selB.onchange = () => { if(selB.value){ sideB.push(selB.value); render(); } };
+
+  el.querySelectorAll('.remove').forEach(btn=>{
+    btn.onclick = () => {
+      const side = btn.dataset.side, name = btn.dataset.name;
+      if(side==="A") sideA = sideA.filter(n=>n!==name);
+      else sideB = sideB.filter(n=>n!==name);
+      render();
+    };
+  });
+}
+
+render();
+</script>
+</body>
+</html>
