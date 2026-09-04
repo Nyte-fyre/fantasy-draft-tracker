@@ -2,6 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8F%88%3C/text%3E%3C/svg%3E">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0f1e17">
 <title>Fantasy Football Helper</title>
 <style>
   :root{
@@ -25,6 +28,8 @@
   h1{font-size:26px; margin:0 0 6px; letter-spacing:.3px;}
   .sub{color:var(--sub); font-size:13px; margin-bottom:28px;}
   .menu{display:flex; flex-direction:column; gap:12px;}
+  .grouplabel{text-align:left; font-size:11px; font-weight:700; color:var(--sub); text-transform:uppercase; letter-spacing:.5px; margin:6px 0 -4px;}
+  .grouplabel:first-child{margin-top:0;}
   a.menubtn{
     display:block; text-decoration:none;
     background:var(--panel2); border:1px solid var(--line); color:var(--text);
@@ -49,13 +54,14 @@
     <h1>Fantasy Football Helper</h1>
     <div class="sub">Everything for your league, in one place</div>
     <div class="menu">
+      <div class="grouplabel">League</div>
       <a class="menubtn primary" href="draft.html">
         Draft Tracker
         <span class="desc">Live draft board, ADP, projections, and starting lineups</span>
       </a>
       <a class="menubtn primary" href="season.html">
         Season Tracker
-        <span class="desc">Standings, waiver wire, and trade history</span>
+        <span class="desc">Standings, power rankings, waiver wire, and trade history</span>
       </a>
       <a class="menubtn primary" href="week.html">
         This Week
@@ -64,6 +70,26 @@
       <a class="menubtn primary" href="news.html">
         News Room
         <span class="desc">Injury report and trending waiver activity</span>
+      </a>
+
+      <div class="grouplabel">Your Team</div>
+      <a class="menubtn primary" href="myteam.html">
+        My Team
+        <span class="desc">Your lineup, matchup, and injury report in one place</span>
+      </a>
+      <a class="menubtn primary" href="trade.html">
+        Trade Analyzer
+        <span class="desc">Compare players or evaluate a full trade</span>
+      </a>
+      <a class="menubtn primary" href="watchlist.html">
+        Watchlist
+        <span class="desc">Track any player league-wide, even ones you don't own</span>
+      </a>
+
+      <div class="grouplabel">Reference</div>
+      <a class="menubtn primary" href="rules.html">
+        League Rules
+        <span class="desc">Scoring, playoffs, waivers, and punishments</span>
       </a>
     </div>
     <div class="footer">Built for a 10-team league &middot; data syncs live from Sleeper</div>
