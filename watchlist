@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8F%88%3C/text%3E%3C/svg%3E">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0f1e17">
+<title>Watchlist</title>
+<style>
+  :root{
+    --bg:#0f1e17; --panel:#16281f; --panel2:#1c3226; --line:#2c4436;
+    --gold:#d4af37; --gold-dim:#a8862c; --text:#eef2ee; --sub:#9fb3a6;
+    --danger:#c65b4e; --accent:#4f9d78;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--text);}
+  .wrap{max-width:900px;margin:0 auto;padding:20px;}
+  h1{font-size:22px;margin:0 0 4px;}
+  h2{font-size:15px;margin:0 0 10px;color:var(--gold);}
+  .sub{color:var(--sub);font-size:13px;margin-bottom:10px;}
+  a{color:var(--gold);}
+  .pagenav{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;}
+  .navpill{background:var(--panel2);border:1px solid var(--line);color:var(--text);
+    text-decoration:none;padding:6px 16px;border-radius:20px;font-size:12px;font-weight:600;
+    transition:border-color .15s,background .15s;}
+  .navpill:hover{border-color:var(--gold-dim);}
+  .navpill.active{background:var(--gold);color:#1a1a1a;border-color:var(--gold);cursor:default;pointer-events:none;}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:18px;}
+  .controls{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;}
+  select,button{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:6px 10px;font-size:13px;}
+  button{background:var(--accent);color:#fff;border:none;cursor:pointer;font-weight:600;}
+  button:hover{background:#3d8763;}
+  .statusline{font-size:12px;color:var(--sub);}
+  .empty-state{color:var(--sub);font-size:14px;text-align:center;padding:40px 20px;}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  thead th{text-align:left;color:var(--sub);font-weight:500;padding:6px;border-bottom:1px solid var(--line);}
+  tbody td{padding:8px 6px;border-bottom:1px solid #223429;}
+  tbody tr:hover{background:var(--panel2);}
+  .postag{font-size:9px;padding:1px 5px;border-radius:4px;font-weight:600;margin-right:5px;}
+  .QB{background:#4a2f6b;color:#dcc8ff;} .RB{background:#1d5c3f;color:#b8f0d4;}
+  .WR{background:#1d4a6b;color:#bfe0ff;} .TE{background:#7a4a12;color:#ffd9a0;}
+  .DST{background:#5c1f1f;color:#ffc4c4;} .K{background:#3d3d1a;color:#eef0b8;}
+  .injbadge{font-size:10px;padding:2px 7px;border-radius:10px;font-weight:700;text-transform:uppercase;}
+  .inj-Questionable{background:#5c4a1f;color:#ffe6a0;} .inj-Doubtful{background:#5c2f1f;color:#ffc9a0;}
+  .inj-Out{background:#5c1f1f;color:#ffc4c4;} .inj-IR{background:#3a1f5c;color:#dcc4ff;}
+  .removeBtn{background:var(--danger);border:none;color:#fff;border-radius:5px;padding:3px 9px;font-size:11px;cursor:pointer;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Watchlist</h1>
+  <div class="sub">Track any player league-wide, even ones you don't own &mdash; who has them, injury status, and value at a glance</div>
+  <div class="pagenav">
+    <a href="index.html" class="navpill">Home</a>
+    <a href="draft.html" class="navpill">Draft</a>
+    <a href="season.html" class="navpill">Season</a>
+    <a href="week.html" class="navpill">This Week</a>
+    <a href="news.html" class="navpill">News</a>
+    <a href="myteam.html" class="navpill">My Team</a>
+    <a href="trade.html" class="navpill">Trade Analyzer</a>
+    <a href="rules.html" class="navpill">Rules</a>
+    <a href="watchlist.html" class="navpill active">Watchlist</a>
+  </div>
+
+  <div class="controls">
+    <select id="addPlayerSelect"><option value="">+ Add a player to watch...</option></select>
+    <button id="syncInjuryBtn">Refresh Injury Status</button>
+    <span class="statusline" id="syncStatus"></span>
+  </div>
+
+  <div id="content"></div>
+</div>
+
+<script>
+const DRAFT_STORAGE_KEY = "ff-2026-draft-state";
+const FAVORITES_KEY = "ff-2026-watchlist";
+const PLAYERS_CACHE_KEY = "ff-2026-sleeper-players-cache";
+const PLAYERS_CACHE_TS_KEY = "ff-2026-sleeper-players-cache-ts";
+
+function loadFavorites(){ try{ return JSON.parse(localStorage.getItem(FAVORITES_KEY))||[]; }catch(e){ return []; } }
+function saveFavorites(favs){ try{ localStorage.setItem(FAVORITES_KEY, JSON.stringify(favs)); }catch(e){} }
+
+function loadDraftSharedData(){
+  try{
+    const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
+    if(!raw) return null;
+    const state = JSON.parse(raw);
+    const players = (state.pts||[]).map(p=>({name:p.name, pos:p.pos, team:p.team, pts:p.pts, adp:p.adp||999, ownerId:null}));
+    const byName = {}; players.forEach(p=>byName[p.name]=p);
+    (state.owners||[]).forEach(o=>{ if(byName[o.name]) byName[o.name].ownerId = o.ownerId; });
+    const teams = (state.teams||[]).map(t=>({...t}));
+    return {players, teams};
+  }catch(e){ return null; }
+}
+
+async function fetchAllSleeperPlayers(){
+  const cachedTs = localStorage.getItem(PLAYERS_CACHE_TS_KEY);
+  if(cachedTs && (Date.now() - parseInt(cachedTs)) < 20*60*60*1000){
+    try{ return JSON.parse(localStorage.getItem(PLAYERS_CACHE_KEY)); }catch(e){}
+  }
+  const res = await fetch("https://api.sleeper.app/v1/players/nfl");
+  if(!res.ok) throw new Error("players fetch failed");
+  const data = await res.json();
+  try{
+    localStorage.setItem(PLAYERS_CACHE_KEY, JSON.stringify(data));
+    localStorage.setItem(PLAYERS_CACHE_TS_KEY, String(Date.now()));
+  }catch(e){}
+  return data;
+}
+
+let injuryByName = {}; // filled in after a sync, name -> {status, note}
+
+async function syncInjuries(){
+  const btn = document.getElementById('syncInjuryBtn');
+  const statusEl = document.getElementById('syncStatus');
+  btn.disabled = true;
+  statusEl.textContent = "Checking injury statuses...";
+  try{
+    const allPlayers = await fetchAllSleeperPlayers();
+    injuryByName = {};
+    Object.values(allPlayers).forEach(p=>{
+      if(p && p.injury_status){
+        const name = p.full_name || (p.first_name+" "+p.last_name);
+        injuryByName[name] = {status: p.injury_status, note: p.injury_body_part||""};
+      }
+    });
+    statusEl.textContent = "Updated";
+    render();
+  }catch(e){
+    statusEl.textContent = "Failed: " + e.message;
+  }finally{
+    btn.disabled = false;
+    setTimeout(()=>{ if(statusEl.textContent==="Updated") statusEl.textContent=""; }, 3000);
+  }
+}
+
+function render(){
+  const draftData = loadDraftSharedData();
+  const el = document.getElementById('content');
+  const addSelect = document.getElementById('addPlayerSelect');
+  const favorites = loadFavorites();
+
+  if(!draftData || !draftData.players.length){
+    el.innerHTML = `<div class="panel"><div class="empty-state">No player data found yet. Open the <a href="draft.html">Draft Tracker</a> first.</div></div>`;
+    addSelect.innerHTML = `<option value="">+ Add a player to watch...</option>`;
+    return;
+  }
+
+  const teamById = {};
+  draftData.teams.forEach(t=>teamById[t.id]=t);
+
+  // populate the "add player" dropdown with anyone not already on the watchlist
+  const addable = draftData.players.filter(p=>!favorites.includes(p.name)).sort((a,b)=>a.adp-b.adp);
+  addSelect.innerHTML = `<option value="">+ Add a player to watch...</option>` +
+    addable.map(p=>`<option value="${p.name.replace(/"/g,'&quot;')}">${p.name} (${p.pos}, ${p.team})</option>`).join("");
+
+  if(!favorites.length){
+    el.innerHTML = `<div class="panel"><div class="empty-state">Your watchlist is empty. Add a player above, or click the ☆ next to any player on the Draft or News pages.</div></div>`;
+    return;
+  }
+
+  const rows = favorites.map(name=>{
+    const p = draftData.players.find(pl=>pl.name===name);
+    const owner = p && p.ownerId ? (teamById[p.ownerId] ? teamById[p.ownerId].name : "Unknown team") : "Available";
+    const inj = injuryByName[name];
+    return `<tr>
+      <td>${p ? `<span class="postag ${p.pos}">${p.pos}</span>` : ""}${name} ${p ? `<span style="color:var(--sub);font-size:11px;">${p.team}</span>` : ""}</td>
+      <td style="color:var(--gold);">${owner}</td>
+      <td>${inj ? `<span class="injbadge inj-${inj.status}">${inj.status}</span> <span style="color:var(--sub);font-size:11px;">${inj.note}</span>` : '<span style="color:var(--sub);">-</span>'}</td>
+      <td>${p ? p.adp : "-"}</td>
+      <td>${p ? p.pts : "-"}</td>
+      <td><a href="https://www.google.com/search?q=${encodeURIComponent(name+" fantasy football news")}&tbm=nws" target="_blank" rel="noopener" style="font-size:11px;">Search &rarr;</a></td>
+      <td><button class="removeBtn" data-name="${name.replace(/"/g,'&quot;')}">Remove</button></td>
+    </tr>`;
+  }).join("");
+
+  el.innerHTML = `
+    <div class="panel">
+      <table>
+        <thead><tr><th>Player</th><th>Owned By</th><th>Injury</th><th>ADP</th><th>Pts</th><th></th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+
+  addSelect.onchange = () => {
+    if(!addSelect.value) return;
+    const favs = loadFavorites();
+    if(!favs.includes(addSelect.value)){ favs.push(addSelect.value); saveFavorites(favs); }
+    render();
+  };
+  el.querySelectorAll('.removeBtn').forEach(btn=>{
+    btn.onclick = () => {
+      const favs = loadFavorites().filter(n=>n!==btn.dataset.name);
+      saveFavorites(favs);
+      render();
+    };
+  });
+}
+
+document.getElementById('syncInjuryBtn').onclick = syncInjuries;
+render();
+syncInjuries();
+</script>
+</body>
+</html>
