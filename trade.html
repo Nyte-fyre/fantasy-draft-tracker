@@ -44,6 +44,13 @@
   .verdict{text-align:center;font-size:15px;font-weight:600;padding:14px;background:var(--panel2);border-radius:10px;margin-top:14px;}
   .addrow{display:flex;gap:6px;margin-top:8px;}
   .empty-state{color:var(--sub);font-size:14px;text-align:center;padding:30px 20px;}
+  .modetoggle{display:flex;gap:8px;}
+  .modeBtn{background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:8px 20px;border-radius:20px;font-size:13px;font-weight:600;cursor:pointer;}
+  .modeBtn.active{background:var(--gold);color:#1a1a1a;border-color:var(--gold);}
+  .suggestbox{display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg);border:1px solid var(--gold-dim);
+    border-radius:6px;margin-top:4px;max-height:220px;overflow-y:auto;z-index:10;}
+  .suggestrow{padding:8px 10px;font-size:13px;cursor:pointer;}
+  .suggestrow:hover{background:var(--panel2);}
 </style>
 </head>
 <body>
@@ -67,25 +74,38 @@
 
 <script>
 const DRAFT_STORAGE_KEY = "ff-2026-draft-state";
+const VIEWER_KEY = "ff-2026-viewer-team"; // same "who am I" choice used across the site
 
-function loadPlayerPool(){
+function loadDraftSharedData(){
   try{
     const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
     if(!raw) return null;
     const state = JSON.parse(raw);
-    return (state.pts||[]).map(p=>({name:p.name, pos:p.pos, team:p.team, pts:p.pts, adp:p.adp||999}));
+    const players = (state.pts||[]).map(p=>({name:p.name, pos:p.pos, team:p.team, pts:p.pts, adp:p.adp||999, ownerId:null}));
+    const byName = {}; players.forEach(p=>byName[p.name]=p);
+    (state.owners||[]).forEach(o=>{ if(byName[o.name]) byName[o.name].ownerId = o.ownerId; });
+    const teams = (state.teams||[]).map(t=>({...t}));
+    return {players, teams};
   }catch(e){ return null; }
 }
 
 let pool = [];
+let teams = [];
+let mode = "compare"; // "compare" or "trade"
 let sideA = []; // array of player names
 let sideB = [];
 
 function playerByName(name){ return pool.find(p=>p.name===name); }
-
 function sideTotal(side){ return side.reduce((s,name)=>{ const p=playerByName(name); return s+(p?p.pts:0); },0); }
 
-function renderSide(sideLetter, names){
+function eligiblePool(sideLetter, myTeamId){
+  if(mode==="compare") return pool;
+  // trade mode: Side A can only be your own roster, Side B only players other teams currently own
+  if(sideLetter==="A") return pool.filter(p=>p.ownerId===myTeamId);
+  return pool.filter(p=>p.ownerId!=null && p.ownerId!==myTeamId);
+}
+
+function renderSide(sideLetter, names, myTeamId){
   const total = sideTotal(names);
   const rows = names.length
     ? names.map(name=>{
@@ -101,16 +121,14 @@ function renderSide(sideLetter, names){
       }).join("")
     : `<div style="color:var(--sub);font-size:12px;font-style:italic;">No players added yet</div>`;
 
-  const options = pool
-    .filter(p=>!names.includes(p.name))
-    .sort((a,b)=>a.adp-b.adp || a.name.localeCompare(b.name))
-    .map(p=>`<option value="${p.name.replace(/"/g,'&quot;')}">${p.name} (${p.pos}, ${p.team})</option>`).join("");
+  const eligible = eligiblePool(sideLetter, myTeamId).filter(p=>!names.includes(p.name));
 
   return `<div class="sidepanel">
-    <h3>Side ${sideLetter}</h3>
+    <h3>Side ${sideLetter}${mode==="trade" ? (sideLetter==="A" ? " (your team)" : " (other teams)") : ""}</h3>
     ${rows}
-    <div class="addrow">
-      <select id="addSelect${sideLetter}"><option value="">+ Add a player...</option>${options}</select>
+    <div class="addrow" style="position:relative;">
+      <input type="text" id="addInput${sideLetter}" placeholder="Type a player's name..." autocomplete="off">
+      <div id="suggest${sideLetter}" class="suggestbox"></div>
     </div>
     <div class="sidetotal">${total.toFixed(0)} pts</div>
   </div>`;
@@ -124,11 +142,83 @@ function verdictText(totalA, totalB){
   return `${winner} comes out ahead by about ${abs.toFixed(0)} projected points.`;
 }
 
+function wireSearchInput(sideLetter, myTeamId){
+  const input = document.getElementById('addInput'+sideLetter);
+  const box = document.getElementById('suggest'+sideLetter);
+  if(!input) return;
+
+  function updateSuggestions(){
+    const q = input.value.trim().toLowerCase();
+    if(!q){ box.innerHTML = ""; box.style.display = "none"; return; }
+    const side = sideLetter==="A" ? sideA : sideB;
+    const matches = eligiblePool(sideLetter, myTeamId)
+      .filter(p=>!side.includes(p.name) && p.name.toLowerCase().includes(q))
+      .sort((a,b)=>a.adp-b.adp)
+      .slice(0, 8);
+    if(!matches.length){
+      box.innerHTML = `<div class="suggestrow" style="color:var(--sub);font-style:italic;">No matches</div>`;
+      box.style.display = "block";
+      return;
+    }
+    box.innerHTML = matches.map(p=>
+      `<div class="suggestrow" data-name="${p.name.replace(/"/g,'&quot;')}">
+        <span class="postag ${p.pos}">${p.pos}</span>${p.name} <span style="color:var(--sub);font-size:11px;">${p.team}</span>
+      </div>`
+    ).join("");
+    box.style.display = "block";
+    box.querySelectorAll('.suggestrow').forEach(row=>{
+      if(!row.dataset.name) return;
+      row.onclick = () => {
+        if(sideLetter==="A") sideA.push(row.dataset.name); else sideB.push(row.dataset.name);
+        render();
+      };
+    });
+  }
+
+  input.oninput = updateSuggestions;
+  input.onfocus = updateSuggestions;
+  input.onblur = () => setTimeout(()=>{ box.style.display = "none"; }, 150); // delay so click still registers
+}
+
 function render(){
   const el = document.getElementById('content');
-  pool = loadPlayerPool() || [];
+  const data = loadDraftSharedData();
+  pool = data ? data.players : [];
+  teams = data ? data.teams : [];
+
   if(!pool.length){
     el.innerHTML = `<div class="panel"><div class="empty-state">No player data found yet. Open the <a href="draft.html">Draft Tracker</a> first so there's a player pool to compare from.</div></div>`;
+    return;
+  }
+
+  const myTeamId = parseInt(localStorage.getItem(VIEWER_KEY)) || null;
+  const teamById = {}; teams.forEach(t=>teamById[t.id]=t);
+
+  const modeToggle = `
+    <div class="modetoggle">
+      <button class="modeBtn ${mode==='compare'?'active':''}" data-mode="compare">Compare</button>
+      <button class="modeBtn ${mode==='trade'?'active':''}" data-mode="trade">Trade</button>
+    </div>`;
+
+  if(mode==="trade" && !myTeamId){
+    el.innerHTML = `
+      <div class="panel">
+        ${modeToggle}
+        <div class="controls" style="margin-top:12px;">
+          <span>Which team is yours?</span>
+          <select id="teamPickSelect">
+            <option value="">Select your team...</option>
+            ${teams.map(t=>`<option value="${t.id}">${t.name}</option>`).join("")}
+          </select>
+        </div>
+      </div>`;
+    document.getElementById('teamPickSelect').onchange = (e)=>{
+      if(e.target.value) localStorage.setItem(VIEWER_KEY, e.target.value);
+      render();
+    };
+    document.querySelectorAll('.modeBtn').forEach(btn=>{
+      btn.onclick = () => { mode = btn.dataset.mode; sideA=[]; sideB=[]; render(); };
+    });
     return;
   }
 
@@ -136,19 +226,23 @@ function render(){
 
   el.innerHTML = `
     <div class="panel">
-      <div class="sides">
-        ${renderSide("A", sideA)}
+      ${modeToggle}
+      ${mode==="trade" ? `<div class="sub" style="margin:10px 0 0;">Trading as <b style="color:var(--gold);">${teamById[myTeamId] ? teamById[myTeamId].name : "?"}</b></div>` : ""}
+      <div class="sides" style="margin-top:14px;">
+        ${renderSide("A", sideA, myTeamId)}
         <div class="vsdivider">VS</div>
-        ${renderSide("B", sideB)}
+        ${renderSide("B", sideB, myTeamId)}
       </div>
       ${(sideA.length && sideB.length) ? `<div class="verdict">${verdictText(totalA, totalB)}</div>` : ""}
     </div>
   `;
 
-  const selA = document.getElementById('addSelectA');
-  const selB = document.getElementById('addSelectB');
-  if(selA) selA.onchange = () => { if(selA.value){ sideA.push(selA.value); render(); } };
-  if(selB) selB.onchange = () => { if(selB.value){ sideB.push(selB.value); render(); } };
+  wireSearchInput("A", myTeamId);
+  wireSearchInput("B", myTeamId);
+
+  document.querySelectorAll('.modeBtn').forEach(btn=>{
+    btn.onclick = () => { mode = btn.dataset.mode; sideA=[]; sideB=[]; render(); };
+  });
 
   el.querySelectorAll('.remove').forEach(btn=>{
     btn.onclick = () => {
