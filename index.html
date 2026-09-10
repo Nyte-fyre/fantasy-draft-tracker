@@ -47,6 +47,12 @@
   }
   .comingsoon .desc{display:block; font-weight:400; font-size:12px; color:var(--sub); margin-top:3px;}
   .footer{margin-top:26px; font-size:11px; color:var(--sub);}
+  .backupSection{margin-top:22px; padding-top:18px; border-top:1px solid var(--line);}
+  .backupBtns{display:flex; gap:8px;}
+  .backupBtn{flex:1; background:var(--panel2); border:1px solid var(--gold-dim); color:var(--gold);
+    border-radius:8px; padding:10px; font-size:13px; font-weight:600; cursor:pointer;}
+  .backupBtn:hover{border-color:var(--gold);}
+  .backupStatus{font-size:11px; color:var(--sub); margin-top:8px; min-height:14px;}
 </style>
 </head>
 <body>
@@ -92,7 +98,117 @@
         <span class="desc">Scoring, playoffs, waivers, and punishments</span>
       </a>
     </div>
+
+    <div class="backupSection">
+      <div class="grouplabel" style="margin-bottom:8px;">Backup &amp; Restore</div>
+      <div class="backupBtns">
+        <button class="backupBtn" id="exportBtn">Export Data</button>
+        <button class="backupBtn" id="importBtn">Import Data</button>
+      </div>
+      <input type="file" id="importFile" accept=".json" style="display:none;">
+      <div class="backupStatus" id="backupStatus">Export to save everything to a file — move it to another device, or share it with Claude for accurate help.</div>
+
+      <button class="backupBtn" id="exportPlayerDbBtn" style="width:100%;margin-top:10px;border-color:var(--line);color:var(--sub);font-size:11px;">
+        Export Player Database (dev use)
+      </button>
+    </div>
+
     <div class="footer">Built for a 10-team league &middot; data syncs live from Sleeper</div>
   </div>
+
+<script>
+  // Every piece of user data the site generates, spread across each page's own
+  // localStorage key. Deliberately excludes the big Sleeper player database cache —
+  // that's a regenerable ~5MB download, not real user data, and would bloat the file.
+  const EXPORT_KEYS = [
+    "ff-2026-draft-state",
+    "ff-2026-viewer-team",
+    "ff-2026-sleeper-draft-id",
+    "ff-2026-points-version",
+    "ff-2026-watchlist",
+    "ff-2026-season-cache",
+    "ff-2026-power-history",
+    "ff-2026-thisweek-cache",
+    "ff-2026-news-cache",
+    "ff-2026-myteam-cache",
+  ];
+
+  function setStatus(msg){ document.getElementById('backupStatus').textContent = msg; }
+
+  document.getElementById('exportBtn').onclick = () => {
+    const data = {};
+    let count = 0;
+    EXPORT_KEYS.forEach(key=>{
+      const val = localStorage.getItem(key);
+      if(val !== null){ data[key] = val; count++; }
+    });
+    if(count === 0){
+      setStatus("Nothing to export yet — visit the Draft Tracker first and sync some data.");
+      return;
+    }
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type: "application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = "ff-2026-backup.json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setStatus(`Exported ${count} data set(s) to ff-2026-backup.json`);
+  };
+
+  document.getElementById('importBtn').onclick = () => {
+    document.getElementById('importFile').click();
+  };
+
+  document.getElementById('importFile').onchange = (e) => {
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try{
+        const data = JSON.parse(reader.result);
+        let count = 0;
+        Object.keys(data).forEach(key=>{
+          if(EXPORT_KEYS.includes(key)){
+            localStorage.setItem(key, data[key]);
+            count++;
+          }
+        });
+        setStatus(`Imported ${count} data set(s). This browser now has that data — visit any page to see it.`);
+      }catch(err){
+        setStatus("That file couldn't be read — make sure it's an export from this site.");
+      }
+      e.target.value = ""; // reset so re-selecting the same file still fires onchange
+    };
+    reader.readAsText(file);
+  };
+
+  document.getElementById('exportPlayerDbBtn').onclick = () => {
+    const raw = localStorage.getItem("ff-2026-sleeper-players-cache");
+    if(!raw){
+      setStatus("No player database cached yet in this browser — visit the Draft Tracker or News Room first to load it.");
+      return;
+    }
+    const proceed = confirm(
+      "This is the full Sleeper player database — roughly 5MB, every NFL player, not just this league.\n\n" +
+      "It'll download slowly and isn't something a normal user typically needs. This exists mainly for " +
+      "development purposes, like handing raw data to Claude for debugging.\n\n" +
+      "Continue?"
+    );
+    if(!proceed) return;
+    const blob = new Blob([raw], {type: "application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = "ff-2026-player-database.json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setStatus("Exported the full player database to ff-2026-player-database.json");
+  };
+</script>
 </body>
 </html>
