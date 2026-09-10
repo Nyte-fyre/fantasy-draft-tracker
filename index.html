@@ -185,12 +185,7 @@
     reader.readAsText(file);
   };
 
-  document.getElementById('exportPlayerDbBtn').onclick = () => {
-    const raw = localStorage.getItem("ff-2026-sleeper-players-cache");
-    if(!raw){
-      setStatus("No player database cached yet in this browser — visit the Draft Tracker or News Room first to load it.");
-      return;
-    }
+  document.getElementById('exportPlayerDbBtn').onclick = async () => {
     const proceed = confirm(
       "This is the full Sleeper player database — roughly 5MB, every NFL player, not just this league.\n\n" +
       "It'll download slowly and isn't something a normal user typically needs. This exists mainly for " +
@@ -198,6 +193,24 @@
       "Continue?"
     );
     if(!proceed) return;
+
+    setStatus("Fetching player database...");
+    let raw = localStorage.getItem("ff-2026-sleeper-players-cache");
+    if(!raw){
+      // Not cached locally — this is common on mobile browsers, which often have a storage
+      // quota too small to hold this file, so the save silently fails even though other
+      // pages work fine (they just re-fetch fresh data each visit rather than relying on
+      // the cache). Fetch it directly here instead of depending on that cache existing.
+      try{
+        const res = await fetch("https://api.sleeper.app/v1/players/nfl");
+        if(!res.ok) throw new Error("Sleeper request failed");
+        raw = await res.text();
+      }catch(e){
+        setStatus("Couldn't fetch the player database — check your connection and try again.");
+        return;
+      }
+    }
+
     const blob = new Blob([raw], {type: "application/json"});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
