@@ -829,7 +829,9 @@ async function syncFromSleeper(){
           try{
             localStorage.setItem(CACHE_KEY, JSON.stringify(allPlayers));
             localStorage.setItem(CACHE_TS_KEY, String(Date.now()));
-          }catch(e){ /* storage quota, fine to skip caching */ }
+          }catch(e){
+            console.warn("Player database couldn't be cached locally (likely storage quota):", e);
+          }
         }
       }
 
