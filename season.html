@@ -150,7 +150,12 @@ async function fetchAllSleeperPlayers(){
   try{
     localStorage.setItem(PLAYERS_CACHE_KEY, JSON.stringify(data));
     localStorage.setItem(PLAYERS_CACHE_TS_KEY, String(Date.now()));
-  }catch(e){}
+  }catch(e){
+    // commonly hits mobile browsers with a small storage quota — the ~5MB player
+    // database just won't fit. Not fatal: this page still works fine using the
+    // freshly-fetched data in memory, it just can't be cached for next time.
+    console.warn("Player database couldn't be cached locally (likely storage quota):", e);
+  }
   return data;
 }
 
