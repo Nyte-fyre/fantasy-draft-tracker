@@ -87,7 +87,7 @@
   .eastereggOverlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:1000;
     align-items:center;justify-content:center;flex-direction:column;}
   .eastereggOverlay.show{display:flex;}
-  .eastereggOverlay video{max-width:90vw;max-height:80vh;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.6);}
+  .eastereggOverlay video, .eastereggOverlay iframe{max-width:90vw;max-height:80vh;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.6);}
   .eastereggClose{margin-top:16px;background:var(--gold);color:#1a1a1a;border:none;border-radius:20px;
     padding:8px 22px;font-size:13px;font-weight:700;cursor:pointer;}
 </style>
@@ -709,17 +709,20 @@ function initViewerSelect(){
     if(MY_TEAM_ID) localStorage.setItem(VIEWER_KEY, String(MY_TEAM_ID));
     else localStorage.removeItem(VIEWER_KEY);
 
-    // easter egg: picking a team named "Chudkins" plays a surprise video.
-    // Drop your video file in the same repo folder as this page, named surprise.mp4
-    // (or edit the src="surprise.mp4" on the <video> tag near the end of this file to match your filename).
+    // easter egg: picking a team named "Chudkins" plays a surprise YouTube video.
+    // EDIT THIS ONE LINE: replace "YOUR_VIDEO_ID_HERE" with your actual YouTube video ID —
+    // the string of characters after "v=" in a normal YouTube URL, or after "youtu.be/" in a
+    // shortened link. Make sure the video's visibility is set to "Unlisted" on YouTube.
+    const YOUTUBE_VIDEO_ID = "YOUR_VIDEO_ID_HERE";
     if(MY_TEAM_ID){
       const t = teams.find(tt=>tt.id===MY_TEAM_ID);
       if(t && t.name.toLowerCase().includes("chudkins")){
         const overlay = document.getElementById('eastereggOverlay');
-        const video = document.getElementById('eastereggVideo');
+        const iframe = document.getElementById('eastereggVideo');
+        // autoplay=1&mute=1 because browsers block autoplay-with-sound; the video's own
+        // built-in YouTube controls include an unmute button right on the player.
+        iframe.src = `https://www.youtube.com/embed/${YOUTUBE_VIDEO_ID}?autoplay=1&mute=1&rel=0`;
         overlay.classList.add('show');
-        video.currentTime = 0;
-        video.play().catch(()=>{ /* autoplay can be blocked until a user gesture; the click that got us here counts, but just in case */ });
       }
     }
 
@@ -729,8 +732,8 @@ function initViewerSelect(){
 
 document.getElementById('eastereggClose').onclick = () => {
   const overlay = document.getElementById('eastereggOverlay');
-  const video = document.getElementById('eastereggVideo');
-  video.pause();
+  const iframe = document.getElementById('eastereggVideo');
+  iframe.src = ""; // clearing src is what actually stops YouTube embeds from playing
   overlay.classList.remove('show');
 };
 
@@ -1048,7 +1051,8 @@ document.getElementById('loadLeagueBtn').onclick = loadLeague;
 })();
 </script>
 <div class="eastereggOverlay" id="eastereggOverlay">
-  <video id="eastereggVideo" src="surprise.mp4" playsinline></video>
+  <iframe id="eastereggVideo" src="" width="640" height="360" style="max-width:90vw;aspect-ratio:16/9;height:auto;border:none;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.6);"
+    allow="autoplay; encrypted-media" allowfullscreen></iframe>
   <button class="eastereggClose" id="eastereggClose">Close</button>
 </div>
 
