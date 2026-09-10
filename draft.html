@@ -93,6 +93,11 @@
 </style>
 </head>
 <body>
+<div class="eastereggOverlay" id="eastereggOverlay">
+  <iframe id="eastereggVideo" src="" width="640" height="360" style="max-width:90vw;aspect-ratio:16/9;height:auto;border:none;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.6);"
+    allow="autoplay; encrypted-media" allowfullscreen></iframe>
+  <button class="eastereggClose" id="eastereggClose">Close</button>
+</div>
 <div class="wrap">
   <h1>Draft Tracker</h1>
   <div class="sub">10-team snake draft &middot; auto-tracks ADP and projected points per team &middot; saves locally in this browser</div>
@@ -1050,11 +1055,5 @@ document.getElementById('loadLeagueBtn').onclick = loadLeague;
   syncFromSleeper(); // auto-sync on page load
 })();
 </script>
-<div class="eastereggOverlay" id="eastereggOverlay">
-  <iframe id="eastereggVideo" src="" width="640" height="360" style="max-width:90vw;aspect-ratio:16/9;height:auto;border:none;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.6);"
-    allow="autoplay; encrypted-media" allowfullscreen></iframe>
-  <button class="eastereggClose" id="eastereggClose">Close</button>
-</div>
-
 </body>
 </html>
